@@ -28,7 +28,7 @@ public class MessageRead {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private Users user;
+    private User user;
 
     private LocalDateTime readAt;
 

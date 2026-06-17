@@ -32,7 +32,7 @@ public class PinnedMessage {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pinned_by", nullable = false)
-    private Users pinnedBy;
+    private User pinnedBy;
 
     private LocalDateTime pinnedAt;
 
