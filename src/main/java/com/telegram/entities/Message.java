@@ -3,10 +3,8 @@ package com.telegram.entities;
 import com.telegram.enums.MessageType;
 import jakarta.persistence.*;
 import lombok.*;
-import org.apache.catalina.User;
 
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +17,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Entity
 public class Message {
 
     @Id

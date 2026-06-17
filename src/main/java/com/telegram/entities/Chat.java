@@ -39,7 +39,7 @@ public class Chat {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", nullable = false)
-    private Users createdBy;
+    private User createdBy;
 
     private LocalDateTime createdAt;
 
