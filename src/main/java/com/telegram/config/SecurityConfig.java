@@ -44,6 +44,9 @@ public class SecurityConfig {
                                 "/api/auth/login")
                         .permitAll()
                         .requestMatchers(
+                                "/ws/**")
+                        .permitAll()
+                        .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
@@ -57,7 +60,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:8080","https://telegramrepomb-production.up.railway.app",
+        config.setAllowedOrigins(List.of("http://localhost:8080","http://localhost:8081","https://telegramrepomb-production.up.railway.app",
                 "http://localhost:3000",
                 "http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
