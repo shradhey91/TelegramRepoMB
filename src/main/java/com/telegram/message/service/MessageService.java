@@ -5,6 +5,9 @@ import com.telegram.common.enums.MemberRole;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
+import com.telegram.notification.dto.NotificationEvent;
+import com.telegram.notification.enums.NotificationType;
+import com.telegram.notification.service.NotificationService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
@@ -37,17 +40,20 @@ public class MessageService {
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
+    private final NotificationService notificationService;
 
     public MessageService(MessageRepo messageRepo, ChatRepo chatRepo,
                           ChatMemberRepo chatMemberRepo, UserRepo userRepo,
                           SimpMessagingTemplate messagingTemplate,
-                          ChatService chatService) {
+                          ChatService chatService,
+                          NotificationService notificationService) {
         this.messageRepo = messageRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -85,6 +91,33 @@ public class MessageService {
         MessageResponse response = chatService.toMessageResponse(message);
 
         broadcastToChat(chat.getId(), WebSocketEvent.of("NEW_MESSAGE", response));
+
+        // send notification to all chat members except sender
+        String actorName = sender.getDisplayName() != null
+                ? sender.getDisplayName() : sender.getUsername();
+
+        String preview = actorName + ": " +
+                (request.content() != null && request.content().length() > 50
+                        ? request.content().substring(0, 50) + "..."
+                        : request.content());
+
+        chat.getMembers().forEach(member -> {
+            if (!member.getUser().getId().equals(senderId)) {
+                notificationService.createAndSend(
+                        NotificationEvent.builder()
+                                .recipientId(member.getUser().getId())
+                                .actorId(senderId)
+                                .actorName(actorName)
+                                .type(request.replyToId() != null
+                                        ? NotificationType.REPLY
+                                        : NotificationType.NEW_MESSAGE)
+                                .referenceId(message.getId())
+                                .chatId(chat.getId())
+                                .content(preview)
+                                .build()
+                );
+            }
+        });
 
         return response;
     }
@@ -129,8 +162,8 @@ public class MessageService {
             ChatMember member = chatMemberRepo.findByChatIdAndUserId(message.getChat().getId(), userId)
                     .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
 
-            if (member.getRole() != MemberRole.OWNER &&
-                    member.getRole() != MemberRole.ADMIN) {
+            if (member.getRole() != com.telegram.common.enums.MemberRole.OWNER &&
+                    member.getRole() != com.telegram.common.enums.MemberRole.ADMIN) {
                 throw new AccessDeniedException("You can only delete your own messages");
             }
         }
@@ -186,7 +219,8 @@ public class MessageService {
         broadcastToChat(chatId, WebSocketEvent.of("TYPING", Map.of(
                 "chatId", chatId,
                 "userId", userId,
-                "username", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername(),
+                "username", user.getDisplayName() != null
+                        ? user.getDisplayName() : user.getUsername(),
                 "isTyping", isTyping)));
     }
 

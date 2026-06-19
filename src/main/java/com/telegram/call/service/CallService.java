@@ -2,6 +2,9 @@ package com.telegram.call.service;
 
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
+import com.telegram.notification.dto.NotificationEvent;
+import com.telegram.notification.enums.NotificationType;
+import com.telegram.notification.service.NotificationService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -30,20 +33,22 @@ public class CallService {
     private final CallParticipantRepo participantRepo;
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
-                       SimpMessagingTemplate messagingTemplate) {
+                       SimpMessagingTemplate messagingTemplate,
+                       NotificationService notificationService) {
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
+        this.notificationService = notificationService;
     }
 
     @Transactional
     public CallResponse initiateCall(Long callerId, InitiateCallRequest request) {
-
         if (callerId.equals(request.receiverId())) {
             throw new IllegalArgumentException("You cannot call yourself");
         }
@@ -53,7 +58,6 @@ public class CallService {
 
         User receiver = userRepo.findById(request.receiverId())
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver not found"));
-
 
         List<CallStatus> busyStatuses = List.of(CallStatus.RINGING, CallStatus.ACTIVE);
 
@@ -74,7 +78,6 @@ public class CallService {
 
         callRepo.save(call);
 
-
         CallParticipant callerParticipant = CallParticipant.builder()
                 .call(call)
                 .user(caller)
@@ -84,16 +87,28 @@ public class CallService {
 
         CallResponse response = toCallResponse(call);
 
-
         messagingTemplate.convertAndSendToUser(
                 receiver.getEmail(),
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
+        String callerName = caller.getDisplayName() != null
+                ? caller.getDisplayName() : caller.getUsername();
+
+        notificationService.createAndSend(
+                NotificationEvent.builder()
+                        .recipientId(receiver.getId())
+                        .actorId(caller.getId())
+                        .actorName(callerName)
+                        .type(NotificationType.CALL_INCOMING)
+                        .referenceId(call.getId())
+                        .chatId(null)
+                        .content(callerName + " is calling you")
+                        .build()
+        );
+
         return response;
     }
-
-
 
     @Transactional
     public CallResponse acceptCall(Long userId, Long callId) {
@@ -107,11 +122,9 @@ public class CallService {
             throw new IllegalStateException("Call is not in RINGING state, current: " + call.getStatus());
         }
 
-
         call.setStatus(CallStatus.ACTIVE);
         call.setStartedAt(LocalDateTime.now());
         callRepo.save(call);
-
 
         CallParticipant receiverParticipant = CallParticipant.builder()
                 .call(call)
@@ -130,8 +143,6 @@ public class CallService {
         return response;
     }
 
-
-
     @Transactional
     public CallResponse rejectCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
@@ -149,7 +160,6 @@ public class CallService {
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
-
 
         messagingTemplate.convertAndSendToUser(
                 call.getCaller().getEmail(),
@@ -177,7 +187,6 @@ public class CallService {
 
         CallResponse response = toCallResponse(call);
 
-
         messagingTemplate.convertAndSendToUser(
                 call.getReceiver().getEmail(),
                 "/queue/calls",
@@ -185,7 +194,6 @@ public class CallService {
 
         return response;
     }
-
 
     @Transactional
     public CallResponse endCall(Long userId, Long callId) {
@@ -219,9 +227,27 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_ENDED", response));
 
+        String actorName = call.getCaller().getId().equals(userId)
+                ? (call.getCaller().getDisplayName() != null
+                   ? call.getCaller().getDisplayName() : call.getCaller().getUsername())
+                : (call.getReceiver().getDisplayName() != null
+                   ? call.getReceiver().getDisplayName() : call.getReceiver().getUsername());
+
+        notificationService.createAndSend(
+                NotificationEvent.builder()
+                        .recipientId(otherUser.getId())
+                        .actorId(userId)
+                        .actorName(actorName)
+                        .type(NotificationType.CALL_ENDED)
+                        .referenceId(call.getId())
+                        .chatId(null)
+                        .content("Call ended" + (call.getDurationSeconds() != null
+                                ? " · " + call.getDurationSeconds() + "s" : ""))
+                        .build()
+        );
+
         return response;
     }
-
 
     @Transactional
     public void markAsMissed(Long callId) {
@@ -244,8 +270,22 @@ public class CallService {
                 call.getReceiver().getEmail(),
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
-    }
 
+        String callerName = call.getCaller().getDisplayName() != null
+                ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
+
+        notificationService.createAndSend(
+                NotificationEvent.builder()
+                        .recipientId(call.getReceiver().getId())
+                        .actorId(call.getCaller().getId())
+                        .actorName(callerName)
+                        .type(NotificationType.CALL_MISSED)
+                        .referenceId(call.getId())
+                        .chatId(null)
+                        .content("Missed call from " + callerName)
+                        .build()
+        );
+    }
 
     @Transactional(readOnly = true)
     public List<CallResponse> getCallHistory(Long userId, int page, int size) {
@@ -266,7 +306,6 @@ public class CallService {
 
         return toCallResponse(call);
     }
-
 
     private Call getCallOrThrow(Long callId) {
         return callRepo.findById(callId)
