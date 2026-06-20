@@ -17,11 +17,17 @@ import com.telegram.chat.repository.ChatMemberRepo;
 import com.telegram.chat.repository.ChatRepo;
 import com.telegram.message.repository.MessageRepo;
 import com.telegram.user.repository.UserRepo;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class ChatService {
@@ -109,10 +115,21 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public List<ChatResponse> getUserChats(Long userId) {
-        List<Chat> chats = chatRepo.findChatsByUserId(userId);
-        return chats.stream()
-                .map(chat -> toChatResponse(chat, userId))
-                .toList();
+        return getUserChats(userId, PageRequest.of(0, 50)).getContent();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ChatResponse> getUserChats(Long userId, Pageable pageable) {
+        Page<Chat> chatPage = chatRepo.findChatsByUserId(userId, pageable);
+        List<Chat> chats = chatPage.getContent();
+
+        // Batch-load last messages for all chats in one query
+        List<Long> chatIds = chats.stream().map(Chat::getId).toList();
+        Map<Long, Message> lastMessageMap = messageRepo.findLastMessagesByChatIds(chatIds)
+                .stream()
+                .collect(Collectors.toMap(m -> m.getChat().getId(), Function.identity()));
+
+        return chatPage.map(chat -> toChatResponse(chat, userId, lastMessageMap.get(chat.getId())));
     }
 
     @Transactional(readOnly = true)
@@ -179,6 +196,20 @@ public class ChatService {
     }
 
     public ChatResponse toChatResponse(Chat chat, Long currentUserId) {
+        MessageResponse lastMsg = messageRepo.findLastMessageByChatId(chat.getId())
+                .map(this::toMessageResponse)
+                .orElse(null);
+        return toChatResponse(chat, currentUserId, null, lastMsg);
+    }
+
+    public ChatResponse toChatResponse(Chat chat, Long currentUserId, Message preloadedLastMessage) {
+        MessageResponse lastMsg = preloadedLastMessage != null
+                ? toMessageResponse(preloadedLastMessage)
+                : null;
+        return toChatResponse(chat, currentUserId, null, lastMsg);
+    }
+
+    private ChatResponse toChatResponse(Chat chat, Long currentUserId, Void ignored, MessageResponse lastMsg) {
         List<ChatMemberResponse> memberResponses = chat.getMembers().stream()
                 .map(m -> new ChatMemberResponse(
                         m.getUser().getId(),
@@ -189,10 +220,6 @@ public class ChatService {
                         m.getUser().getIsOnline(),
                         m.getJoinedAt()))
                 .toList();
-
-        MessageResponse lastMsg = messageRepo.findLastMessageByChatId(chat.getId())
-                .map(this::toMessageResponse)
-                .orElse(null);
 
         long unread = 0;
         ChatMember currentMember = chat.getMembers().stream()
@@ -237,7 +264,10 @@ public class ChatService {
         Long replyToId = null;
         if (msg.getReplyTo() != null) {
             replyToId = msg.getReplyTo().getId();
-            replyContent = msg.getReplyTo().getContent();
+            // Don't leak content of deleted messages through reply chains
+            replyContent = msg.getReplyTo().getIsDeleted()
+                    ? null
+                    : msg.getReplyTo().getContent();
         }
 
         return new MessageResponse(
@@ -249,7 +279,7 @@ public class ChatService {
                         : msg.getSender().getUsername(),
                 msg.getSender().getAvatarUrl(),
                 msg.getType(),
-                msg.getContent(),
+                msg.getIsDeleted() ? null : msg.getContent(),
                 replyToId,
                 replyContent,
                 msg.getIsEdited(),

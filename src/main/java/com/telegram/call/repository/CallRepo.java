@@ -44,4 +44,11 @@ public interface CallRepo extends JpaRepository<Call, Long> {
             @Param("userId1") Long userId1,
             @Param("userId2") Long userId2,
             Pageable pageable);
+
+    @Query("""
+            SELECT c FROM Call c
+            WHERE c.status = com.telegram.common.enums.CallStatus.RINGING
+              AND c.createdAt < :cutoff
+            """)
+    List<Call> findTimedOutRingingCalls(@Param("cutoff") java.time.LocalDateTime cutoff);
 }
