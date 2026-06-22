@@ -2,6 +2,7 @@ package com.telegram.call.service;
 
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
+import com.telegram.notification.listener.ChatNotificationEvent;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -14,6 +15,7 @@ import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.call.repository.CallParticipantRepo;
 import com.telegram.call.repository.CallRepo;
 import com.telegram.user.repository.UserRepo;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -30,15 +32,18 @@ public class CallService {
     private final CallParticipantRepo participantRepo;
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
-                       SimpMessagingTemplate messagingTemplate) {
+                       SimpMessagingTemplate messagingTemplate,
+                       ApplicationEventPublisher eventPublisher) {
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -53,7 +58,6 @@ public class CallService {
 
         User receiver = userRepo.findById(request.receiverId())
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver not found"));
-
 
         List<CallStatus> busyStatuses = List.of(CallStatus.RINGING, CallStatus.ACTIVE);
 
@@ -74,7 +78,6 @@ public class CallService {
 
         callRepo.save(call);
 
-
         CallParticipant callerParticipant = CallParticipant.builder()
                 .call(call)
                 .user(caller)
@@ -84,16 +87,19 @@ public class CallService {
 
         CallResponse response = toCallResponse(call);
 
-
         messagingTemplate.convertAndSendToUser(
                 receiver.getEmail(),
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
+        // ── Notification: incoming call ──
+        String callerName = caller.getDisplayName() != null
+                ? caller.getDisplayName() : caller.getUsername();
+        eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
+                call.getId(), callerId, callerName, request.receiverId()));
+
         return response;
     }
-
-
 
     @Transactional
     public CallResponse acceptCall(Long userId, Long callId) {
@@ -107,11 +113,9 @@ public class CallService {
             throw new IllegalStateException("Call is not in RINGING state, current: " + call.getStatus());
         }
 
-
         call.setStatus(CallStatus.ACTIVE);
         call.setStartedAt(LocalDateTime.now());
         callRepo.save(call);
-
 
         CallParticipant receiverParticipant = CallParticipant.builder()
                 .call(call)
@@ -130,8 +134,6 @@ public class CallService {
         return response;
     }
 
-
-
     @Transactional
     public CallResponse rejectCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
@@ -149,7 +151,6 @@ public class CallService {
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
-
 
         messagingTemplate.convertAndSendToUser(
                 call.getCaller().getEmail(),
@@ -177,7 +178,6 @@ public class CallService {
 
         CallResponse response = toCallResponse(call);
 
-
         messagingTemplate.convertAndSendToUser(
                 call.getReceiver().getEmail(),
                 "/queue/calls",
@@ -185,7 +185,6 @@ public class CallService {
 
         return response;
     }
-
 
     @Transactional
     public CallResponse endCall(Long userId, Long callId) {
@@ -222,7 +221,6 @@ public class CallService {
         return response;
     }
 
-
     @Transactional
     public void markAsMissed(Long callId) {
         Call call = getCallOrThrow(callId);
@@ -244,8 +242,14 @@ public class CallService {
                 call.getReceiver().getEmail(),
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
-    }
 
+        // ── Notification: missed call ──
+        String callerName = call.getCaller().getDisplayName() != null
+                ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
+        eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(
+                call.getId(), call.getCaller().getId(), callerName,
+                call.getReceiver().getId()));
+    }
 
     @Transactional(readOnly = true)
     public List<CallResponse> getCallHistory(Long userId, int page, int size) {
@@ -266,7 +270,6 @@ public class CallService {
 
         return toCallResponse(call);
     }
-
 
     private Call getCallOrThrow(Long callId) {
         return callRepo.findById(callId)

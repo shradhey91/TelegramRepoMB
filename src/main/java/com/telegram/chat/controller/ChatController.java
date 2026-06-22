@@ -2,6 +2,7 @@ package com.telegram.chat.controller;
 
 import com.telegram.chat.dto.request.CreateChatRequest;
 import com.telegram.chat.dto.response.ChatResponse;
+import com.telegram.chat.dto.response.PinnedMessageResponse;
 import com.telegram.auth.security.CustomUserDetails;
 import com.telegram.chat.service.ChatService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,6 +26,7 @@ public class ChatController {
     public ChatController(ChatService chatService) {
         this.chatService = chatService;
     }
+
 
     @PostMapping
     @Operation(summary = "Create a new chat (private, group, or channel)")
@@ -73,6 +76,57 @@ public class ChatController {
         Long requesterId = extractUserId(authentication);
         chatService.removeMemberFromChat(chatId, userId, requesterId);
         return ResponseEntity.ok(Map.of("message", "Member removed successfully"));
+    }
+
+
+    @PostMapping("/join")
+    @Operation(summary = "Join a group or channel via invite link")
+    public ResponseEntity<ChatResponse> joinViaInviteLink(
+            @RequestParam String inviteLink,
+            Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        return ResponseEntity.ok(chatService.joinViaInviteLink(userId, inviteLink));
+    }
+
+    @PostMapping("/{chatId}/invite-link/regenerate")
+    @Operation(summary = "Regenerate the invite link (admin only)")
+    public ResponseEntity<Map<String, String>> regenerateInviteLink(
+            @PathVariable Long chatId,
+            Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        String newLink = chatService.regenerateInviteLink(chatId, userId);
+        return ResponseEntity.ok(Map.of("inviteLink", newLink));
+    }
+
+
+    @PostMapping("/{chatId}/pins/{messageId}")
+    @Operation(summary = "Pin a message in a chat")
+    public ResponseEntity<PinnedMessageResponse> pinMessage(
+            @PathVariable Long chatId,
+            @PathVariable Long messageId,
+            Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        return ResponseEntity.ok(chatService.pinMessage(chatId, messageId, userId));
+    }
+
+    @DeleteMapping("/{chatId}/pins/{messageId}")
+    @Operation(summary = "Unpin a message from a chat")
+    public ResponseEntity<Map<String, String>> unpinMessage(
+            @PathVariable Long chatId,
+            @PathVariable Long messageId,
+            Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        chatService.unpinMessage(chatId, messageId, userId);
+        return ResponseEntity.ok(Map.of("message", "Message unpinned successfully"));
+    }
+
+    @GetMapping("/{chatId}/pins")
+    @Operation(summary = "Get all pinned messages in a chat")
+    public ResponseEntity<List<PinnedMessageResponse>> getPinnedMessages(
+            @PathVariable Long chatId,
+            Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        return ResponseEntity.ok(chatService.getPinnedMessages(chatId, userId));
     }
 
     private Long extractUserId(Authentication authentication) {
