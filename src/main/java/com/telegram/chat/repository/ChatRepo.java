@@ -59,4 +59,14 @@ public interface ChatRepo extends JpaRepository<Chat, Long> {
             """)
     Optional<Chat> findPrivateChatBetween(@Param("userId1") Long userId1,
                                           @Param("userId2") Long userId2);
+
+
+    @Query("""
+            SELECT c FROM Chat c
+            JOIN FETCH c.members m
+            JOIN FETCH m.user
+            JOIN FETCH c.createdBy
+            WHERE c.inviteLink = :inviteLink
+            """)
+    Optional<Chat> findByInviteLink(@Param("inviteLink") String inviteLink);
 }
