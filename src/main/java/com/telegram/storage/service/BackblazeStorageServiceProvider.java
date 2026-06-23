@@ -3,6 +3,7 @@ package com.telegram.storage.service;
 import com.backblaze.b2.client.B2StorageClient;
 import com.backblaze.b2.client.contentSources.B2ByteArrayContentSource;
 import com.backblaze.b2.client.contentSources.B2ContentSource;
+import com.backblaze.b2.client.structures.B2DownloadByNameRequest;
 import com.backblaze.b2.client.structures.B2UploadFileRequest;
 import com.telegram.storage.dto.StorageFolder;
 import com.telegram.storage.dto.StorageServiceProvider;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.util.UUID;
 
 @Service
@@ -82,8 +84,24 @@ public class BackblazeStorageServiceProvider implements StorageServiceProvider {
 
     @Override
     public byte[] download(String fileName) {
-        throw new UnsupportedOperationException(
-                "Download not implemented yet"
-        );
+
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()){
+            storageClient.downloadByName(B2DownloadByNameRequest
+                            .builder(bucketName, fileName)
+                            .build(),
+                    (headers, inputStream) -> {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                        }
+                    }
+            );
+
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Download failed", e);
+        }
     }
 }
