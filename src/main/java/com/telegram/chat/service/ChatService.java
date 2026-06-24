@@ -3,9 +3,11 @@ package com.telegram.chat.service;
 import com.telegram.chat.dto.request.CreateChatRequest;
 import com.telegram.chat.dto.response.ChatMemberResponse;
 import com.telegram.chat.dto.response.ChatResponse;
+import com.telegram.chat.dto.response.PinnedMessageResponse;
 import com.telegram.message.dto.response.MessageResponse;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
+import com.telegram.chat.entity.PinnedMessage;
 import com.telegram.message.entity.Message;
 import com.telegram.auth.entity.User;
 import com.telegram.common.enums.ChatType;
@@ -15,11 +17,16 @@ import com.telegram.common.exception.ConflictException;
 import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.chat.repository.ChatMemberRepo;
 import com.telegram.chat.repository.ChatRepo;
+import com.telegram.chat.repository.PinnedMessageRepo;
 import com.telegram.message.repository.MessageRepo;
 import com.telegram.user.repository.UserRepo;
+import com.telegram.websocket.dto.WebSocketEvent;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.context.ApplicationEventPublisher;
+import com.telegram.notification.listener.ChatNotificationEvent;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,14 +43,27 @@ public class ChatService {
     private final ChatMemberRepo chatMemberRepo;
     private final MessageRepo messageRepo;
     private final UserRepo userRepo;
+    private final PinnedMessageRepo pinnedMessageRepo;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ChatService(ChatRepo chatRepo, ChatMemberRepo chatMemberRepo,
-                       MessageRepo messageRepo, UserRepo userRepo) {
+                       MessageRepo messageRepo, UserRepo userRepo,
+                       PinnedMessageRepo pinnedMessageRepo,
+                       ApplicationEventPublisher eventPublisher,
+                       SimpMessagingTemplate messagingTemplate) {
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.messageRepo = messageRepo;
         this.userRepo = userRepo;
+        this.pinnedMessageRepo = pinnedMessageRepo;
+        this.eventPublisher = eventPublisher;
+        this.messagingTemplate = messagingTemplate;
     }
+
+    // ════════════════════════════════════════════════════════════════
+    //  EXISTING: Chat creation
+    // ════════════════════════════════════════════════════════════════
 
     @Transactional
     public ChatResponse createChat(Long creatorId, CreateChatRequest request) {
@@ -113,6 +133,10 @@ public class ChatService {
         return toChatResponse(chat, creator.getId());
     }
 
+    // ════════════════════════════════════════════════════════════════
+    //  EXISTING: Chat retrieval
+    // ════════════════════════════════════════════════════════════════
+
     @Transactional(readOnly = true)
     public List<ChatResponse> getUserChats(Long userId) {
         return getUserChats(userId, PageRequest.of(0, 50)).getContent();
@@ -123,7 +147,6 @@ public class ChatService {
         Page<Chat> chatPage = chatRepo.findChatsByUserId(userId, pageable);
         List<Chat> chats = chatPage.getContent();
 
-        // Batch-load last messages for all chats in one query
         List<Long> chatIds = chats.stream().map(Chat::getId).toList();
         Map<Long, Message> lastMessageMap = messageRepo.findLastMessagesByChatIds(chatIds)
                 .stream()
@@ -143,6 +166,10 @@ public class ChatService {
 
         return toChatResponse(chat, userId);
     }
+
+    // ════════════════════════════════════════════════════════════════
+    //  EXISTING: Member management
+    // ════════════════════════════════════════════════════════════════
 
     @Transactional
     public void addMemberToChat(Long chatId, Long userId, Long requesterId) {
@@ -183,6 +210,13 @@ public class ChatService {
                 .orElseThrow(() -> new ResourceNotFoundException("User is not a member of this chat"));
 
         chatMemberRepo.delete(member);
+
+        // ── Notification: member left ──
+        User removedUser = member.getUser();
+        String leftName = removedUser.getDisplayName() != null
+                ? removedUser.getDisplayName() : removedUser.getUsername();
+        eventPublisher.publishEvent(new ChatNotificationEvent.MemberLeft(
+                chatId, userId, leftName));
     }
 
     private void addMember(Chat chat, User user, MemberRole role) {
@@ -193,6 +227,170 @@ public class ChatService {
                 .build();
         chatMemberRepo.save(member);
         chat.getMembers().add(member);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  NEW: Join via invite link
+    // ════════════════════════════════════════════════════════════════
+
+    @Transactional
+    public ChatResponse joinViaInviteLink(Long userId, String inviteLink) {
+        Chat chat = chatRepo.findByInviteLink(inviteLink)
+                .orElseThrow(() -> new ResourceNotFoundException("Invalid or expired invite link"));
+
+        if (chat.getType() == ChatType.PRIVATE) {
+            throw new IllegalArgumentException("Cannot join a private chat via invite link");
+        }
+
+        if (chatMemberRepo.existsByChatIdAndUserId(chat.getId(), userId)) {
+            // Already a member — just return the chat instead of erroring
+            return toChatResponse(chat, userId);
+        }
+
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        addMember(chat, user, MemberRole.MEMBER);
+
+        // Notify existing members
+        String joinedName = user.getDisplayName() != null
+                ? user.getDisplayName() : user.getUsername();
+
+        broadcastToChat(chat.getId(), WebSocketEvent.of("MEMBER_JOINED", Map.of(
+                "chatId", chat.getId(),
+                "userId", user.getId(),
+                "username", joinedName)));
+
+        // ── Notification: member joined ──
+        eventPublisher.publishEvent(new ChatNotificationEvent.MemberJoined(
+                chat.getId(), userId, joinedName));
+
+        return toChatResponse(chat, userId);
+    }
+
+    @Transactional
+    public String regenerateInviteLink(Long chatId, Long requesterId) {
+        Chat chat = chatRepo.findById(chatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat not found"));
+
+        if (chat.getType() == ChatType.PRIVATE) {
+            throw new IllegalArgumentException("Private chats do not have invite links");
+        }
+
+        ChatMember requester = chatMemberRepo.findByChatIdAndUserId(chatId, requesterId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
+
+        if (requester.getRole() != MemberRole.OWNER && requester.getRole() != MemberRole.ADMIN) {
+            throw new AccessDeniedException("Only admins can regenerate invite links");
+        }
+
+        String newLink = UUID.randomUUID().toString();
+        chat.setInviteLink(newLink);
+        chatRepo.save(chat);
+
+        return newLink;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  NEW: Pin / Unpin messages
+    // ════════════════════════════════════════════════════════════════
+
+    @Transactional
+    public PinnedMessageResponse pinMessage(Long chatId, Long messageId, Long userId) {
+        Chat chat = chatRepo.findById(chatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat not found"));
+
+        ChatMember member = chatMemberRepo.findByChatIdAndUserId(chatId, userId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
+
+        // Only owner/admin can pin in groups/channels; both members can pin in private chats
+        if (chat.getType() != ChatType.PRIVATE &&
+                member.getRole() != MemberRole.OWNER &&
+                member.getRole() != MemberRole.ADMIN) {
+            throw new AccessDeniedException("Only admins can pin messages");
+        }
+
+        Message message = messageRepo.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message not found"));
+
+        if (!message.getChat().getId().equals(chatId)) {
+            throw new IllegalArgumentException("Message does not belong to this chat");
+        }
+
+        if (message.getIsDeleted()) {
+            throw new IllegalArgumentException("Cannot pin a deleted message");
+        }
+
+        if (pinnedMessageRepo.existsByChatIdAndMessageId(chatId, messageId)) {
+            throw new ConflictException("Message is already pinned");
+        }
+
+        User pinner = member.getUser();
+
+        PinnedMessage pinned = PinnedMessage.builder()
+                .chat(chat)
+                .message(message)
+                .pinnedBy(pinner)
+                .build();
+
+        pinnedMessageRepo.save(pinned);
+
+        PinnedMessageResponse response = toPinnedMessageResponse(pinned);
+
+        broadcastToChat(chatId, WebSocketEvent.of("MESSAGE_PINNED", response));
+
+        return response;
+    }
+
+    @Transactional
+    public void unpinMessage(Long chatId, Long messageId, Long userId) {
+        Chat chat = chatRepo.findById(chatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat not found"));
+
+        ChatMember member = chatMemberRepo.findByChatIdAndUserId(chatId, userId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
+
+        if (chat.getType() != ChatType.PRIVATE &&
+                member.getRole() != MemberRole.OWNER &&
+                member.getRole() != MemberRole.ADMIN) {
+            throw new AccessDeniedException("Only admins can unpin messages");
+        }
+
+        PinnedMessage pinned = pinnedMessageRepo.findByChatIdAndMessageId(chatId, messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message is not pinned"));
+
+        pinnedMessageRepo.delete(pinned);
+
+        broadcastToChat(chatId, WebSocketEvent.of("MESSAGE_UNPINNED", Map.of(
+                "chatId", chatId,
+                "messageId", messageId)));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PinnedMessageResponse> getPinnedMessages(Long chatId, Long userId) {
+        if (!chatMemberRepo.existsByChatIdAndUserId(chatId, userId)) {
+            throw new AccessDeniedException("You are not a member of this chat");
+        }
+
+        return pinnedMessageRepo.findByChatIdOrderByPinnedAtDesc(chatId)
+                .stream()
+                .map(this::toPinnedMessageResponse)
+                .toList();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Mappers
+    // ════════════════════════════════════════════════════════════════
+
+    private PinnedMessageResponse toPinnedMessageResponse(PinnedMessage pm) {
+        User pinner = pm.getPinnedBy();
+        return new PinnedMessageResponse(
+                pm.getId(),
+                pm.getChat().getId(),
+                toMessageResponse(pm.getMessage()),
+                pinner.getId(),
+                pinner.getDisplayName() != null ? pinner.getDisplayName() : pinner.getUsername(),
+                pm.getPinnedAt());
     }
 
     public ChatResponse toChatResponse(Chat chat, Long currentUserId) {
@@ -264,7 +462,6 @@ public class ChatService {
         Long replyToId = null;
         if (msg.getReplyTo() != null) {
             replyToId = msg.getReplyTo().getId();
-            // Don't leak content of deleted messages through reply chains
             replyContent = msg.getReplyTo().getIsDeleted()
                     ? null
                     : msg.getReplyTo().getContent();
@@ -285,5 +482,9 @@ public class ChatService {
                 msg.getIsEdited(),
                 msg.getCreatedAt(),
                 msg.getEditedAt());
+    }
+
+    private void broadcastToChat(Long chatId, WebSocketEvent<?> event) {
+        messagingTemplate.convertAndSend("/topic/chat/" + chatId, event);
     }
 }

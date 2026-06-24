@@ -5,9 +5,11 @@ import com.telegram.common.enums.MemberRole;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
+import com.telegram.notification.listener.ChatNotificationEvent;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
+import com.telegram.message.entity.Attachment;
 import com.telegram.message.entity.Message;
 import com.telegram.message.entity.MessageEditHistory;
 import com.telegram.auth.entity.User;
@@ -16,15 +18,19 @@ import com.telegram.common.exception.AccessDeniedException;
 import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.chat.repository.ChatMemberRepo;
 import com.telegram.chat.repository.ChatRepo;
+//import com.telegram.message.repository.AttachmentRepo;
 import com.telegram.message.repository.MessageRepo;
 import com.telegram.user.repository.UserRepo;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -35,23 +41,38 @@ public class MessageService {
     private final ChatRepo chatRepo;
     private final ChatMemberRepo chatMemberRepo;
     private final UserRepo userRepo;
+    //private final AttachmentRepo attachmentRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
+    //private final FileStorageService fileStorageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MessageService(MessageRepo messageRepo, ChatRepo chatRepo,
                           ChatMemberRepo chatMemberRepo, UserRepo userRepo,
+                         // AttachmentRepo attachmentRepo,
                           SimpMessagingTemplate messagingTemplate,
-                          ChatService chatService) {
+                          ChatService chatService,
+                         // FileStorageService fileStorageService,
+                          ApplicationEventPublisher eventPublisher) {
         this.messageRepo = messageRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.userRepo = userRepo;
+        //this.attachmentRepo = attachmentRepo;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
+        //this.fileStorageService = fileStorageService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
     public MessageResponse sendMessage(Long senderId, SendMessageRequest request) {
+        return sendMessageWithAttachments(senderId, request);
+    }
+
+    @Transactional
+    public MessageResponse sendMessageWithAttachments(Long senderId,
+                                                      SendMessageRequest request) {
         User sender = userRepo.findById(senderId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -62,10 +83,16 @@ public class MessageService {
             throw new AccessDeniedException("You are not a member of this chat");
         }
 
+        MessageType type = request.type();
+        //boolean hasFiles = files != null && !files.isEmpty();
+//        if (type == null) {
+//            type = hasFiles ? MessageType.FILE : MessageType.TEXT;
+//        }
+
         Message.MessageBuilder builder = Message.builder()
                 .chat(chat)
                 .sender(sender)
-                .type(request.type() != null ? request.type() : MessageType.TEXT)
+                .type(type)
                 .content(request.content())
                 .isEdited(false)
                 .isDeleted(false);
@@ -79,12 +106,45 @@ public class MessageService {
         Message message = builder.build();
         messageRepo.save(message);
 
+//        if (hasFiles) {
+//            List<Attachment> attachments = new ArrayList<>();
+//            for (MultipartFile file : files) {
+//                FileStorageService.StoredFile stored = fileStorageService.store(file);
+//
+//                Attachment attachment = Attachment.builder()
+//                        .message(message)
+//                        .fileUrl(stored.fileUrl())
+//                        .fileName(stored.originalName())
+//                        .fileSize(stored.fileSize())
+//                        .mimeType(stored.mimeType())
+//                        .build();
+//
+//                attachmentRepo.save(attachment);
+//                attachments.add(attachment);
+//            }
+//            message.setAttachments(attachments);
+//        }
+
         chat.setUpdatedAt(LocalDateTime.now());
         chatRepo.save(chat);
 
         MessageResponse response = chatService.toMessageResponse(message);
-
         broadcastToChat(chat.getId(), WebSocketEvent.of("NEW_MESSAGE", response));
+
+        // ── Notification: new message ──
+        String senderName = sender.getDisplayName() != null
+                ? sender.getDisplayName() : sender.getUsername();
+
+        eventPublisher.publishEvent(new ChatNotificationEvent.NewMessage(
+                chat.getId(), senderId, senderName, message.getId(), request.content()));
+
+        // ── Notification: reply ──
+        if (request.replyToId() != null && message.getReplyTo() != null) {
+            eventPublisher.publishEvent(new ChatNotificationEvent.MessageReply(
+                    chat.getId(), senderId, senderName,
+                    message.getReplyTo().getSender().getId(),
+                    message.getId(), request.content()));
+        }
 
         return response;
     }
@@ -114,7 +174,6 @@ public class MessageService {
         messageRepo.save(message);
 
         MessageResponse response = chatService.toMessageResponse(message);
-
         broadcastToChat(message.getChat().getId(), WebSocketEvent.of("MESSAGE_EDITED", response));
 
         return response;
@@ -135,8 +194,16 @@ public class MessageService {
             }
         }
 
+//        for (Attachment attachment : message.getAttachments()) {
+//            String storedName = extractStoredName(attachment.getFileUrl());
+//            if (storedName != null) {
+//                fileStorageService.delete(storedName);
+//            }
+//        }
+
         message.setIsDeleted(true);
         message.setContent(null);
+        message.getAttachments().clear();
         messageRepo.save(message);
 
         broadcastToChat(message.getChat().getId(),
@@ -192,5 +259,11 @@ public class MessageService {
 
     private void broadcastToChat(Long chatId, WebSocketEvent<?> event) {
         messagingTemplate.convertAndSend("/topic/chat/" + chatId, event);
+    }
+
+    private String extractStoredName(String fileUrl) {
+        if (fileUrl == null) return null;
+        int lastSlash = fileUrl.lastIndexOf('/');
+        return lastSlash >= 0 ? fileUrl.substring(lastSlash + 1) : fileUrl;
     }
 }
