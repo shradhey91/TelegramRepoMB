@@ -1,13 +1,9 @@
 package com.telegram.auth.entity;
 
-import com.telegram.chat.entity.ChatMember;
-import com.telegram.message.entity.Message;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 
 @Entity
@@ -52,14 +48,6 @@ public class User {
         private LocalDateTime createdAt;
 
         private LocalDateTime updatedAt;
-
-        @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-        @Builder.Default
-        private List<ChatMember> chatMemberships = new ArrayList<>();
-
-        @OneToMany(mappedBy = "sender")
-        @Builder.Default
-        private List<Message> sentMessages = new ArrayList<>();
 
         @PrePersist
         protected void onCreate() {
