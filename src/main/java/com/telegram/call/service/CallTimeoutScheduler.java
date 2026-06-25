@@ -24,7 +24,7 @@ public class CallTimeoutScheduler {
         this.callService = callService;
     }
 
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRate = 15000)
     public void expireTimedOutCalls() {
         LocalDateTime cutoff = LocalDateTime.now().minusSeconds(RING_TIMEOUT_SECONDS);
         List<Call> timedOut = callRepo.findTimedOutRingingCalls(cutoff);
