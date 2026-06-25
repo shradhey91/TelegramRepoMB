@@ -123,7 +123,7 @@ public class ChatService {
         Page<Chat> chatPage = chatRepo.findChatsByUserId(userId, pageable);
         List<Chat> chats = chatPage.getContent();
 
-        // Batch-load last messages for all chats in one query
+
         List<Long> chatIds = chats.stream().map(Chat::getId).toList();
         Map<Long, Message> lastMessageMap = messageRepo.findLastMessagesByChatIds(chatIds)
                 .stream()
@@ -264,7 +264,7 @@ public class ChatService {
         Long replyToId = null;
         if (msg.getReplyTo() != null) {
             replyToId = msg.getReplyTo().getId();
-            // Don't leak content of deleted messages through reply chains
+
             replyContent = msg.getReplyTo().getIsDeleted()
                     ? null
                     : msg.getReplyTo().getContent();

@@ -1,7 +1,6 @@
 package com.telegram.message.service;
 
 import com.telegram.chat.service.ChatService;
-import com.telegram.common.enums.MemberRole;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
@@ -92,7 +91,6 @@ public class MessageService {
 
         broadcastToChat(chat.getId(), WebSocketEvent.of("NEW_MESSAGE", response));
 
-        // send notification to all chat members except sender
         String actorName = sender.getDisplayName() != null
                 ? sender.getDisplayName() : sender.getUsername();
 

@@ -47,6 +47,7 @@ public class Chat {
 
     private LocalDateTime updatedAt;
 
+
     @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ChatMember> members = new ArrayList<>();
