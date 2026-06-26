@@ -17,7 +17,7 @@ import java.util.List;
 public class Story {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue
     private Long id;
 
     @ManyToOne

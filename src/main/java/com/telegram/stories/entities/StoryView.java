@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 public class StoryView {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue
     private Long id;
 
     @ManyToOne
