@@ -54,7 +54,6 @@ public class WebSocketFileTransferController {
             fileTransferService.markTransferring(signal.transferId());
         }
 
-        // Relay the signal to the other peer
         Map<String, Object> outbound = Map.of(
                 "transferId", signal.transferId(),
                 "senderId", senderId,
