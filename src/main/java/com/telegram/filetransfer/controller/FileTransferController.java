@@ -71,7 +71,8 @@ public class FileTransferController {
     @PostMapping("/{transferId}/failed")
     @Operation(summary = "Mark transfer as failed (connection dropped)")
     public ResponseEntity<Map<String, String>> failed(
-            @PathVariable Long transferId) {
+            @PathVariable Long transferId,
+            Authentication auth) {
         fileTransferService.markFailed(transferId);
         return ResponseEntity.ok(Map.of("message", "Transfer marked as failed"));
     }

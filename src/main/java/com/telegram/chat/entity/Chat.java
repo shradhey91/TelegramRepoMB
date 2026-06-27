@@ -1,7 +1,6 @@
 package com.telegram.chat.entity;
 
 import com.telegram.auth.entity.User;
-import com.telegram.message.entity.Message;
 import com.telegram.common.enums.ChatType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -50,10 +49,6 @@ public class Chat {
     @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ChatMember> members = new ArrayList<>();
-
-    @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Message> messages = new ArrayList<>();
 
     @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

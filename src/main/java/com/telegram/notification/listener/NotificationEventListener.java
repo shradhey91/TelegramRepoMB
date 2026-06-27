@@ -10,13 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/**
- * Listens for application events published by the existing services
- * and creates persistent notifications for each relevant recipient.
- *
- * This keeps the notification module completely decoupled —
- * existing services publish events, this listener consumes them.
- */
+
 @Component
 public class NotificationEventListener {
 
@@ -29,9 +23,6 @@ public class NotificationEventListener {
         this.chatMemberRepo = chatMemberRepo;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Message events
-    // ════════════════════════════════════════════════════════════════
 
     @Async
     @EventListener
@@ -49,7 +40,7 @@ public class NotificationEventListener {
     @Async
     @EventListener
     public void onMessageReply(ChatNotificationEvent.MessageReply event) {
-        // Only notify the person being replied to
+
         if (event.originalSenderId().equals(event.replierId())) return;
 
         notificationService.createAndSend(NotificationEvent.builder()
@@ -63,9 +54,6 @@ public class NotificationEventListener {
                 .build());
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Chat membership events
-    // ════════════════════════════════════════════════════════════════
 
     @Async
     @EventListener
@@ -93,9 +81,6 @@ public class NotificationEventListener {
         );
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Call events
-    // ════════════════════════════════════════════════════════════════
 
     @Async
     @EventListener
@@ -123,9 +108,6 @@ public class NotificationEventListener {
                 .build());
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Helper: notify all chat members except the actor
-    // ════════════════════════════════════════════════════════════════
 
     private void notifyOtherChatMembers(Long chatId, Long actorId, String actorName,
                                          NotificationType type, Long referenceId,
@@ -133,7 +115,6 @@ public class NotificationEventListener {
         List<Long> memberIds = chatMemberRepo.findUserIdsByChatId(chatId);
 
         for (Long memberId : memberIds) {
-            // Don't notify the person who performed the action
             if (memberId.equals(actorId)) continue;
 
             notificationService.createAndSend(NotificationEvent.builder()

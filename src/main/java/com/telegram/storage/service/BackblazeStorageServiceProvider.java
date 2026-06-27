@@ -42,8 +42,6 @@ public class BackblazeStorageServiceProvider implements StorageServiceProvider {
                             file.getContentType(),
                             source
                     ).build();
-            storageClient.uploadSmallFile(request);
-
             var response = storageClient.uploadSmallFile(request);
             String url = String.format("https://f000.backblazeb2.com/file/%s/%s", bucketName, fileName);
 

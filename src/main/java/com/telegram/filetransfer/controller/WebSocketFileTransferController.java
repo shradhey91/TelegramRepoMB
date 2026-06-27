@@ -15,18 +15,7 @@ import org.springframework.stereotype.Controller;
 import java.security.Principal;
 import java.util.Map;
 
-/**
- * Relays WebRTC signaling messages between peers for P2P file transfer.
- *
- * The server NEVER sees file bytes — it only forwards:
- *   - SDP_OFFER / SDP_ANSWER  (session descriptions)
- *   - ICE_CANDIDATE           (connectivity candidates)
- *   - PROGRESS                (optional % updates for UI)
- *   - CANCEL                  (abort mid-transfer)
- *
- * Frontend sends to:   /app/filetransfer.signal
- * Receiver listens on: /user/queue/file-transfer-signal
- */
+
 @Controller
 public class WebSocketFileTransferController {
 
@@ -49,12 +38,12 @@ public class WebSocketFileTransferController {
         User receiver = userRepo.findById(signal.receiverId())
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver not found"));
 
-        // If the DataChannel just opened, mark as transferring
+
         if ("DATACHANNEL_OPEN".equals(signal.type())) {
             fileTransferService.markTransferring(signal.transferId());
         }
 
-        // Relay the signal to the other peer
+
         Map<String, Object> outbound = Map.of(
                 "transferId", signal.transferId(),
                 "senderId", senderId,

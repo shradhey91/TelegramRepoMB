@@ -1,15 +1,16 @@
 package com.telegram.message.service;
 
 import com.telegram.chat.service.ChatService;
+import com.telegram.common.enums.ChatType;
 import com.telegram.common.enums.MemberRole;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
 import com.telegram.notification.listener.ChatNotificationEvent;
+import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
-import com.telegram.message.entity.Attachment;
 import com.telegram.message.entity.Message;
 import com.telegram.message.entity.MessageEditHistory;
 import com.telegram.auth.entity.User;
@@ -18,7 +19,6 @@ import com.telegram.common.exception.AccessDeniedException;
 import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.chat.repository.ChatMemberRepo;
 import com.telegram.chat.repository.ChatRepo;
-//import com.telegram.message.repository.AttachmentRepo;
 import com.telegram.message.repository.MessageRepo;
 import com.telegram.user.repository.UserRepo;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,10 +27,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+
 import java.util.List;
 import java.util.Map;
 
@@ -41,28 +40,26 @@ public class MessageService {
     private final ChatRepo chatRepo;
     private final ChatMemberRepo chatMemberRepo;
     private final UserRepo userRepo;
-    //private final AttachmentRepo attachmentRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
-    //private final FileStorageService fileStorageService;
     private final ApplicationEventPublisher eventPublisher;
+    private final BlockService blockService;
 
     public MessageService(MessageRepo messageRepo, ChatRepo chatRepo,
                           ChatMemberRepo chatMemberRepo, UserRepo userRepo,
-                         // AttachmentRepo attachmentRepo,
                           SimpMessagingTemplate messagingTemplate,
                           ChatService chatService,
-                         // FileStorageService fileStorageService,
-                          ApplicationEventPublisher eventPublisher) {
+                          ApplicationEventPublisher eventPublisher,
+                          BlockService blockService) {
         this.messageRepo = messageRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.userRepo = userRepo;
-        //this.attachmentRepo = attachmentRepo;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
         //this.fileStorageService = fileStorageService;
         this.eventPublisher = eventPublisher;
+        this.blockService = blockService;
     }
 
     @Transactional
@@ -82,6 +79,19 @@ public class MessageService {
         if (!chatMemberRepo.existsByChatIdAndUserId(chat.getId(), senderId)) {
             throw new AccessDeniedException("You are not a member of this chat");
         }
+
+        if (chat.getType() == ChatType.PRIVATE) {
+            Long otherUserId = chat.getMembers().stream()
+                    .map(m -> m.getUser().getId())
+                    .filter(id -> !id.equals(senderId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (otherUserId != null && blockService.isBlocked(senderId, otherUserId)) {
+                throw new AccessDeniedException("Cannot send message — there is a block between you and this user");
+            }
+        }
+
 
         MessageType type = request.type();
         //boolean hasFiles = files != null && !files.isEmpty();
@@ -256,6 +266,8 @@ public class MessageService {
                 "username", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername(),
                 "isTyping", isTyping)));
     }
+
+
 
     private void broadcastToChat(Long chatId, WebSocketEvent<?> event) {
         messagingTemplate.convertAndSend("/topic/chat/" + chatId, event);

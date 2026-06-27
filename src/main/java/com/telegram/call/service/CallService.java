@@ -3,6 +3,7 @@ package com.telegram.call.service;
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
 import com.telegram.notification.listener.ChatNotificationEvent;
+import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -33,17 +34,19 @@ public class CallService {
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final BlockService blockService;
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
                        SimpMessagingTemplate messagingTemplate,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,BlockService blockService) {
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
         this.eventPublisher = eventPublisher;
+        this.blockService = blockService;
     }
 
     @Transactional
@@ -51,6 +54,10 @@ public class CallService {
 
         if (callerId.equals(request.receiverId())) {
             throw new IllegalArgumentException("You cannot call yourself");
+        }
+
+        if (blockService.isBlocked(callerId, request.receiverId())) {
+            throw new AccessDeniedException("Cannot call this user — there is a block between you");
         }
 
         User caller = userRepo.findById(callerId)
@@ -92,7 +99,6 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
-        // ── Notification: incoming call ──
         String callerName = caller.getDisplayName() != null
                 ? caller.getDisplayName() : caller.getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
@@ -243,7 +249,6 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
 
-        // ── Notification: missed call ──
         String callerName = call.getCaller().getDisplayName() != null
                 ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(

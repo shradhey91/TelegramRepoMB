@@ -53,7 +53,6 @@ public class User {
         protected void onCreate() {
                 createdAt = LocalDateTime.now();
                 updatedAt = LocalDateTime.now();
-                if (isOnline == null) isOnline = false;
         }
 
         @PreUpdate
