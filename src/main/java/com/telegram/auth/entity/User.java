@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 
 @Entity
@@ -57,6 +58,6 @@ public class User {
 
         @PreUpdate
         protected void onUpdate() {
-                updatedAt = LocalDateTime.now();
+                updatedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
         }
 }

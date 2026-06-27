@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 public class AuthService {
@@ -88,7 +89,7 @@ public class AuthService {
     public void logout(Long userId) {
         userRepo.findById(userId).ifPresent(user -> {
             user.setIsOnline(false);
-            user.setLastSeenAt(LocalDateTime.now());
+            user.setLastSeenAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
             userRepo.save(user);
         });
     }
