@@ -1,11 +1,11 @@
 package com.telegram.stories.dto.response;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record StoryViewerResponse(
         Long userId,
         String username,
         String displayName,
         String avatarUrl,
-        LocalDateTime viewedAt
+        OffsetDateTime viewedAt
 ) {}

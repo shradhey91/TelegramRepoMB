@@ -3,8 +3,6 @@ package com.telegram.call.dto.response;
 import com.telegram.common.enums.CallStatus;
 import com.telegram.common.enums.CallType;
 
-import java.time.LocalDateTime;
-
 public record CallResponse(
         Long callId,
         Long callerId,
@@ -15,8 +13,8 @@ public record CallResponse(
         String receiverAvatarUrl,
         CallType callType,
         CallStatus status,
-        LocalDateTime createdAt,
-        LocalDateTime startedAt,
-        LocalDateTime endedAt,
+        java.time.OffsetDateTime createdAt,
+        java.time.OffsetDateTime startedAt,
+        java.time.OffsetDateTime endedAt,
         Long durationSeconds
 ) {}

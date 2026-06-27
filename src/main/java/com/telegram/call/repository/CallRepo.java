@@ -50,5 +50,5 @@ public interface CallRepo extends JpaRepository<Call, Long> {
             WHERE c.status = com.telegram.common.enums.CallStatus.RINGING
               AND c.createdAt < :cutoff
             """)
-    List<Call> findTimedOutRingingCalls(@Param("cutoff") java.time.LocalDateTime cutoff);
+    List<Call> findTimedOutRingingCalls(@Param("cutoff") java.time.OffsetDateTime cutoff);
 }

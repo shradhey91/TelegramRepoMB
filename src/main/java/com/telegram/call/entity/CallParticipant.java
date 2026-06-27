@@ -4,7 +4,8 @@ import com.telegram.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "call_participants", uniqueConstraints = {
@@ -43,12 +44,12 @@ public class CallParticipant {
     @Builder.Default
     private Boolean screenSharing = false;
 
-    private LocalDateTime joinedAt;
+    private OffsetDateTime joinedAt;
 
-    private LocalDateTime leftAt;
+    private OffsetDateTime leftAt;
 
     @PrePersist
     protected void onCreate() {
-        joinedAt = LocalDateTime.now();
+        joinedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

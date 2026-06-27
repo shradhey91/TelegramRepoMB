@@ -16,8 +16,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Service
 public class AuthService {
@@ -89,7 +90,7 @@ public class AuthService {
     public void logout(Long userId) {
         userRepo.findById(userId).ifPresent(user -> {
             user.setIsOnline(false);
-            user.setLastSeenAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+            user.setLastSeenAt(OffsetDateTime.now(ZoneOffset.UTC));
             userRepo.save(user);
         });
     }

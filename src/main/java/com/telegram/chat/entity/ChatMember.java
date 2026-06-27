@@ -5,7 +5,9 @@ import com.telegram.message.entity.Message;
 import com.telegram.common.enums.MemberRole;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "chat_members", uniqueConstraints = {
@@ -41,13 +43,13 @@ public class ChatMember {
     @JoinColumn(name = "last_read_message_id")
     private Message lastReadMessage;
 
-    private LocalDateTime joinedAt;
+    private OffsetDateTime joinedAt;
 
-    private LocalDateTime mutedUntil;
+    private OffsetDateTime mutedUntil;
 
     @PrePersist
     protected void onCreate() {
-        joinedAt = LocalDateTime.now();
+        joinedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (role == null) role = MemberRole.MEMBER;
     }
 }

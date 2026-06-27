@@ -3,7 +3,8 @@ package com.telegram.message.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "message_edit_history", indexes = {
@@ -27,10 +28,10 @@ public class MessageEditHistory {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String oldContent;
 
-    private LocalDateTime editedAt;
+    private OffsetDateTime editedAt;
 
     @PrePersist
     protected void onCreate() {
-        editedAt = LocalDateTime.now();
+        editedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

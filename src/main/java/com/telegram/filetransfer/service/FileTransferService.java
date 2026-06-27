@@ -21,7 +21,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
@@ -123,7 +124,7 @@ public class FileTransferService {
         }
 
         transfer.setStatus(FileTransferStatus.ACCEPTED);
-        transfer.setAcceptedAt(LocalDateTime.now());
+        transfer.setAcceptedAt(OffsetDateTime.now(ZoneOffset.UTC));
         fileTransferRepo.save(transfer);
 
         FileTransferResponse response = toResponse(transfer);
@@ -214,7 +215,7 @@ public class FileTransferService {
 
         transfer.setStatus(FileTransferStatus.COMPLETED);
         transfer.setBytesTransferred(transfer.getFileSize());
-        transfer.setCompletedAt(LocalDateTime.now());
+        transfer.setCompletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         fileTransferRepo.save(transfer);
 
         Message message = Message.builder()
