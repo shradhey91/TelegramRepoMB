@@ -61,10 +61,6 @@ public class ChatService {
         this.messagingTemplate = messagingTemplate;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  EXISTING: Chat creation
-    // ════════════════════════════════════════════════════════════════
-
     @Transactional
     public ChatResponse createChat(Long creatorId, CreateChatRequest request) {
         User creator = userRepo.findById(creatorId)
@@ -133,10 +129,6 @@ public class ChatService {
         return toChatResponse(chat, creator.getId());
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  EXISTING: Chat retrieval
-    // ════════════════════════════════════════════════════════════════
-
     @Transactional(readOnly = true)
     public List<ChatResponse> getUserChats(Long userId) {
         return getUserChats(userId, PageRequest.of(0, 50)).getContent();
@@ -170,10 +162,6 @@ public class ChatService {
 
         return toChatResponse(chat, userId);
     }
-
-    // ════════════════════════════════════════════════════════════════
-    //  EXISTING: Member management
-    // ════════════════════════════════════════════════════════════════
 
     @Transactional
     public void addMemberToChat(Long chatId, Long userId, Long requesterId) {
@@ -215,7 +203,6 @@ public class ChatService {
 
         chatMemberRepo.delete(member);
 
-        // ── Notification: member left ──
         User removedUser = member.getUser();
         String leftName = removedUser.getDisplayName() != null
                 ? removedUser.getDisplayName() : removedUser.getUsername();
@@ -233,10 +220,6 @@ public class ChatService {
         chat.getMembers().add(member);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  NEW: Join via invite link
-    // ════════════════════════════════════════════════════════════════
-
     @Transactional
     public ChatResponse joinViaInviteLink(Long userId, String inviteLink) {
         Chat chat = chatRepo.findByInviteLink(inviteLink)
@@ -247,7 +230,6 @@ public class ChatService {
         }
 
         if (chatMemberRepo.existsByChatIdAndUserId(chat.getId(), userId)) {
-            // Already a member — just return the chat instead of erroring
             return toChatResponse(chat, userId);
         }
 
@@ -256,7 +238,6 @@ public class ChatService {
 
         addMember(chat, user, MemberRole.MEMBER);
 
-        // Notify existing members
         String joinedName = user.getDisplayName() != null
                 ? user.getDisplayName() : user.getUsername();
 
@@ -265,7 +246,7 @@ public class ChatService {
                 "userId", user.getId(),
                 "username", joinedName)));
 
-        // ── Notification: member joined ──
+
         eventPublisher.publishEvent(new ChatNotificationEvent.MemberJoined(
                 chat.getId(), userId, joinedName));
 
@@ -295,10 +276,6 @@ public class ChatService {
         return newLink;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  NEW: Pin / Unpin messages
-    // ════════════════════════════════════════════════════════════════
-
     @Transactional
     public PinnedMessageResponse pinMessage(Long chatId, Long messageId, Long userId) {
         Chat chat = chatRepo.findById(chatId)
@@ -307,7 +284,6 @@ public class ChatService {
         ChatMember member = chatMemberRepo.findByChatIdAndUserId(chatId, userId)
                 .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
 
-        // Only owner/admin can pin in groups/channels; both members can pin in private chats
         if (chat.getType() != ChatType.PRIVATE &&
                 member.getRole() != MemberRole.OWNER &&
                 member.getRole() != MemberRole.ADMIN) {
@@ -382,9 +358,6 @@ public class ChatService {
                 .toList();
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Mappers
-    // ════════════════════════════════════════════════════════════════
 
     private PinnedMessageResponse toPinnedMessageResponse(PinnedMessage pm) {
         User pinner = pm.getPinnedBy();

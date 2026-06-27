@@ -1,16 +1,7 @@
 package com.telegram.notification.listener;
 
-/**
- * Spring application events published by existing services.
- * The NotificationEventListener picks these up and creates
- * persistent notifications + WebSocket pushes.
- *
- * Using records as events keeps them lightweight and immutable.
- * Services publish via: applicationEventPublisher.publishEvent(new ChatNotificationEvent.NewMessage(...))
- */
 public sealed interface ChatNotificationEvent {
 
-    // ── Message events ──
 
     record NewMessage(
             Long chatId,
@@ -29,8 +20,6 @@ public sealed interface ChatNotificationEvent {
             String content
     ) implements ChatNotificationEvent {}
 
-    // ── Chat membership events ──
-
     record MemberJoined(
             Long chatId,
             Long userId,
@@ -42,8 +31,6 @@ public sealed interface ChatNotificationEvent {
             Long userId,
             String userName
     ) implements ChatNotificationEvent {}
-
-    // ── Call events ──
 
     record IncomingCall(
             Long callId,
