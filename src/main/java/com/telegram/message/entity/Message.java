@@ -81,6 +81,7 @@ public class Message {
     protected void onCreate() {
         createdAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
         updatedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+
         if (isEdited == null) isEdited = false;
         if (isDeleted == null) isDeleted = false;
     }
