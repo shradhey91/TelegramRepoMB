@@ -2,9 +2,13 @@ package com.telegram.call.service;
 
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
+<<<<<<< HEAD
 import com.telegram.notification.dto.NotificationEvent;
 import com.telegram.notification.enums.NotificationType;
 import com.telegram.notification.service.NotificationService;
+=======
+import com.telegram.notification.listener.ChatNotificationEvent;
+>>>>>>> main
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -17,6 +21,7 @@ import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.call.repository.CallParticipantRepo;
 import com.telegram.call.repository.CallRepo;
 import com.telegram.user.repository.UserRepo;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -33,18 +38,30 @@ public class CallService {
     private final CallParticipantRepo participantRepo;
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
+<<<<<<< HEAD
     private final NotificationService notificationService;
+=======
+    private final ApplicationEventPublisher eventPublisher;
+>>>>>>> main
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
                        SimpMessagingTemplate messagingTemplate,
+<<<<<<< HEAD
                        NotificationService notificationService) {
+=======
+                       ApplicationEventPublisher eventPublisher) {
+>>>>>>> main
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
+<<<<<<< HEAD
         this.notificationService = notificationService;
+=======
+        this.eventPublisher = eventPublisher;
+>>>>>>> main
     }
 
     @Transactional
@@ -92,6 +109,7 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
+<<<<<<< HEAD
         String callerName = caller.getDisplayName() != null
                 ? caller.getDisplayName() : caller.getUsername();
 
@@ -106,6 +124,13 @@ public class CallService {
                         .content(callerName + " is calling you")
                         .build()
         );
+=======
+        // ── Notification: incoming call ──
+        String callerName = caller.getDisplayName() != null
+                ? caller.getDisplayName() : caller.getUsername();
+        eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
+                call.getId(), callerId, callerName, request.receiverId()));
+>>>>>>> main
 
         return response;
     }
@@ -271,6 +296,7 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
 
+<<<<<<< HEAD
         String callerName = call.getCaller().getDisplayName() != null
                 ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
 
@@ -285,6 +311,14 @@ public class CallService {
                         .content("Missed call from " + callerName)
                         .build()
         );
+=======
+        // ── Notification: missed call ──
+        String callerName = call.getCaller().getDisplayName() != null
+                ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
+        eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(
+                call.getId(), call.getCaller().getId(), callerName,
+                call.getReceiver().getId()));
+>>>>>>> main
     }
 
     @Transactional(readOnly = true)

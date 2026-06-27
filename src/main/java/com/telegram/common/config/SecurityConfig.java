@@ -59,7 +59,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
+<<<<<<< HEAD
         config.setAllowedOrigins(List.of("http://localhost:8080","https://telegram-mb-frontend.vercel.app/","http://localhost:8081","https://telegramrepomb-production.up.railway.app", "https://telegram-frontend-fixed-two.vercel.app/",
+=======
+        config.setAllowedOrigins(List.of("http://localhost:8080","https://telegram-mb-frontend-theta.vercel.app","http://localhost:8081","https://telegramrepomb-production.up.railway.app",
+>>>>>>> main
                 "http://localhost:3000",
                 "http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
