@@ -92,7 +92,6 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
-        // ── Notification: incoming call ──
         String callerName = caller.getDisplayName() != null
                 ? caller.getDisplayName() : caller.getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
@@ -243,7 +242,6 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
 
-        // ── Notification: missed call ──
         String callerName = call.getCaller().getDisplayName() != null
                 ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(

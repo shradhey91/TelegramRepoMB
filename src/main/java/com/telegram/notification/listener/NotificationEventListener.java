@@ -38,7 +38,6 @@ public class NotificationEventListener {
     @Async
     @EventListener
     public void onMessageReply(ChatNotificationEvent.MessageReply event) {
-        // Only notify the person being replied to
         if (event.originalSenderId().equals(event.replierId())) return;
 
         notificationService.createAndSend(NotificationEvent.builder()
