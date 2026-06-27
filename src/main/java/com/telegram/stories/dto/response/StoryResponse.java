@@ -2,7 +2,7 @@ package com.telegram.stories.dto.response;
 
 import com.telegram.stories.entities.StoryType;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record StoryResponse(
         Long id,
@@ -12,8 +12,8 @@ public record StoryResponse(
         String mediaUrl,
         String caption,
         StoryType type,
-        LocalDateTime createdAt,
-        LocalDateTime expiresAt,
+        OffsetDateTime createdAt,
+        OffsetDateTime expiresAt,
         long viewerCount,
         boolean viewed
 ) {}

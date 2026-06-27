@@ -7,7 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Getter
 @Setter
@@ -29,5 +29,5 @@ public class StoryView {
     @ManyToOne
     private User viewer;
 
-    private LocalDateTime viewedAt;
+    private OffsetDateTime viewedAt;
 }

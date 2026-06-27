@@ -6,7 +6,8 @@ import com.telegram.common.enums.FileTransferStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "file_transfers", indexes = {
@@ -58,16 +59,16 @@ public class FileTransfer {
     @Builder.Default
     private Long bytesTransferred = 0L;
 
-    private LocalDateTime acceptedAt;
+    private OffsetDateTime acceptedAt;
 
-    private LocalDateTime completedAt;
+    private OffsetDateTime completedAt;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (status == null) status = FileTransferStatus.PENDING;
         if (bytesTransferred == null) bytesTransferred = 0L;
     }

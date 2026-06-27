@@ -4,7 +4,8 @@ import com.telegram.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "message_reads")
@@ -27,11 +28,11 @@ public class MessageRead {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    private LocalDateTime readAt;
+    private OffsetDateTime readAt;
 
     @PrePersist
     protected void onCreate() {
-        readAt = LocalDateTime.now();
+        readAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }
 

@@ -4,7 +4,7 @@ import com.telegram.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,7 +36,7 @@ public class Story {
             orphanRemoval = true)
     private List<StoryView> views = new ArrayList<>();
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
-    private LocalDateTime expiresAt;
+    private OffsetDateTime expiresAt;
 }

@@ -2,8 +2,6 @@ package com.telegram.filetransfer.dto.response;
 
 import com.telegram.common.enums.FileTransferStatus;
 
-import java.time.LocalDateTime;
-
 public record FileTransferResponse(
         Long id,
         Long chatId,
@@ -17,7 +15,7 @@ public record FileTransferResponse(
         String checksum,
         FileTransferStatus status,
         Long bytesTransferred,
-        LocalDateTime createdAt,
-        LocalDateTime acceptedAt,
-        LocalDateTime completedAt
+        java.time.OffsetDateTime createdAt,
+        java.time.OffsetDateTime acceptedAt,
+        java.time.OffsetDateTime completedAt
 ) {}

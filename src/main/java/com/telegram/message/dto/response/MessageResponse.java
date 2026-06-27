@@ -2,7 +2,7 @@ package com.telegram.message.dto.response;
 
 import com.telegram.common.enums.MessageType;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record MessageResponse(
         Long id,
@@ -15,6 +15,6 @@ public record MessageResponse(
         Long replyToId,
         String replyToContent,
         Boolean isEdited,
-        LocalDateTime createdAt,
-        LocalDateTime editedAt
+        OffsetDateTime createdAt,
+        OffsetDateTime editedAt
 ) {}

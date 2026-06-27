@@ -6,8 +6,9 @@ import com.telegram.common.enums.MessageType;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,11 +64,11 @@ public class Message {
     @Column(nullable = false)
     private Boolean isDeleted;
 
-    private LocalDateTime editedAt;
+    private OffsetDateTime editedAt;
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @OneToMany(mappedBy = "message", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
@@ -79,15 +80,14 @@ public class Message {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-        updatedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (isEdited == null) isEdited = false;
         if (isDeleted == null) isDeleted = false;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }
