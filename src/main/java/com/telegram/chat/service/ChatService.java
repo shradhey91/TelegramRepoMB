@@ -61,6 +61,8 @@ public class ChatService {
         this.messagingTemplate = messagingTemplate;
     }
 
+
+
     @Transactional
     public ChatResponse createChat(Long creatorId, CreateChatRequest request) {
         User creator = userRepo.findById(creatorId)
@@ -82,7 +84,7 @@ public class ChatService {
 
         var existing = chatRepo.findPrivateChatBetween(creator.getId(), otherUserId);
         if (existing.isPresent()) {
-            return toChatResponse(existing.get(), creator.getId());
+            return toChatResponse(existing.get(), creator.getId(), null);
         }
 
         User otherUser = userRepo.findById(otherUserId)
@@ -98,7 +100,7 @@ public class ChatService {
         addMember(chat, creator, MemberRole.MEMBER);
         addMember(chat, otherUser, MemberRole.MEMBER);
 
-        return toChatResponse(chat, creator.getId());
+        return toChatResponse(chat, creator.getId(), null);
     }
 
     private ChatResponse createGroupOrChannel(User creator, CreateChatRequest request) {
@@ -126,7 +128,7 @@ public class ChatService {
             }
         }
 
-        return toChatResponse(chat, creator.getId());
+        return toChatResponse(chat, creator.getId(), null);
     }
 
     @Transactional(readOnly = true)
@@ -156,7 +158,7 @@ public class ChatService {
             throw new AccessDeniedException("You are not a member of this chat");
         }
 
-        return toChatResponse(chat, userId);
+        return toChatResponse(chat, userId, null);
     }
 
     @Transactional
@@ -216,6 +218,8 @@ public class ChatService {
         chat.getMembers().add(member);
     }
 
+
+
     @Transactional
     public ChatResponse joinViaInviteLink(Long userId, String inviteLink) {
         Chat chat = chatRepo.findByInviteLink(inviteLink)
@@ -226,13 +230,15 @@ public class ChatService {
         }
 
         if (chatMemberRepo.existsByChatIdAndUserId(chat.getId(), userId)) {
-            return toChatResponse(chat, userId);
+
+            return toChatResponse(chat, userId, null);
         }
 
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         addMember(chat, user, MemberRole.MEMBER);
+
 
         String joinedName = user.getDisplayName() != null
                 ? user.getDisplayName() : user.getUsername();
@@ -242,12 +248,55 @@ public class ChatService {
                 "userId", user.getId(),
                 "username", joinedName)));
 
-
         eventPublisher.publishEvent(new ChatNotificationEvent.MemberJoined(
                 chat.getId(), userId, joinedName));
 
-        return toChatResponse(chat, userId);
+        return toChatResponse(chat, userId, null);
     }
+
+
+    @Transactional
+    public void changeMemberRole(Long chatId, Long targetUserId, MemberRole newRole, Long requesterId) {
+        Chat chat = chatRepo.findById(chatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat not found"));
+
+        if (chat.getType() == ChatType.PRIVATE) {
+            throw new IllegalArgumentException("Cannot change roles in a private chat");
+        }
+
+        ChatMember requester = chatMemberRepo.findByChatIdAndUserId(chatId, requesterId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
+
+        if (requester.getRole() != MemberRole.OWNER) {
+            throw new AccessDeniedException("Only the group owner can change member roles");
+        }
+
+        if (targetUserId.equals(requesterId)) {
+            throw new IllegalArgumentException("You cannot change your own role");
+        }
+
+        if (newRole == MemberRole.OWNER) {
+            throw new IllegalArgumentException("Cannot promote to OWNER. Use transfer ownership instead.");
+        }
+
+        ChatMember target = chatMemberRepo.findByChatIdAndUserId(chatId, targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User is not a member of this chat"));
+
+        target.setRole(newRole);
+        chatMemberRepo.save(target);
+
+        String action = newRole == MemberRole.ADMIN ? "MEMBER_PROMOTED" : "MEMBER_DEMOTED";
+        User targetUser = target.getUser();
+        String targetName = targetUser.getDisplayName() != null
+                ? targetUser.getDisplayName() : targetUser.getUsername();
+
+        broadcastToChat(chatId, WebSocketEvent.of(action, Map.of(
+                "chatId", chatId,
+                "userId", targetUserId,
+                "username", targetName,
+                "newRole", newRole.name())));
+    }
+
 
     @Transactional
     public String regenerateInviteLink(Long chatId, Long requesterId) {
@@ -355,6 +404,7 @@ public class ChatService {
     }
 
 
+
     private PinnedMessageResponse toPinnedMessageResponse(PinnedMessage pm) {
         User pinner = pm.getPinnedBy();
         return new PinnedMessageResponse(
@@ -366,21 +416,17 @@ public class ChatService {
                 pm.getPinnedAt());
     }
 
-    public ChatResponse toChatResponse(Chat chat, Long currentUserId) {
-        MessageResponse lastMsg = messageRepo.findLastMessageByChatId(chat.getId())
-                .map(this::toMessageResponse)
-                .orElse(null);
-        return toChatResponse(chat, currentUserId, null, lastMsg);
-    }
-
     public ChatResponse toChatResponse(Chat chat, Long currentUserId, Message preloadedLastMessage) {
-        MessageResponse lastMsg = preloadedLastMessage != null
-                ? toMessageResponse(preloadedLastMessage)
-                : null;
-        return toChatResponse(chat, currentUserId, null, lastMsg);
-    }
+        MessageResponse lastMsg = null;
 
-    private ChatResponse toChatResponse(Chat chat, Long currentUserId, Void ignored, MessageResponse lastMsg) {
+        if (preloadedLastMessage != null) {
+            lastMsg = toMessageResponse(preloadedLastMessage);
+        } else {
+            lastMsg = messageRepo.findLastMessageByChatId(chat.getId())
+                    .map(this::toMessageResponse)
+                    .orElse(null);
+        }
+
         List<ChatMemberResponse> memberResponses = chat.getMembers().stream()
                 .map(m -> new ChatMemberResponse(
                         m.getUser().getId(),
@@ -398,11 +444,15 @@ public class ChatService {
                 .findFirst()
                 .orElse(null);
 
-        if (currentMember != null && currentMember.getLastReadMessage() != null) {
-            unread = messageRepo.countUnreadMessages(
-                    chat.getId(),
-                    currentMember.getLastReadMessage().getId(),
-                    currentUserId);
+        if (currentMember != null) {
+            if (currentMember.getLastReadMessage() != null) {
+                unread = messageRepo.countUnreadMessages(
+                        chat.getId(),
+                        currentMember.getLastReadMessage().getId(),
+                        currentUserId);
+            } else {
+                unread = messageRepo.countAllUnreadMessages(chat.getId(), currentUserId);
+            }
         }
 
         String title = chat.getTitle();

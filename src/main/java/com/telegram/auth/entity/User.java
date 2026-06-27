@@ -52,9 +52,8 @@ public class User {
 
         @PrePersist
         protected void onCreate() {
-                createdAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-                updatedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
-                if (isOnline == null) isOnline = false;
+                createdAt = LocalDateTime.now();
+                updatedAt = LocalDateTime.now();
         }
 
         @PreUpdate

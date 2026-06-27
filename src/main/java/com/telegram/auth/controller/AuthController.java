@@ -29,14 +29,14 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Register a new user account")
+
     public ResponseEntity<AuthResponse> register( @RequestBody RegisterRequest request) {
         AuthResponse response = authService.register(request);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")
-    @Operation(summary = "Login and receive an access token")
+
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request.email(), request.password());
         return ResponseEntity.ok(response);

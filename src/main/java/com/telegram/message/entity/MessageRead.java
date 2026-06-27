@@ -7,11 +7,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "message_reads", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"message_id", "user_id"})
-}, indexes = {
-        @Index(name = "idx_message_reads_user", columnList = "user_id, message_id")
-})
+@Table(name = "message_reads")
 @Getter
 @Setter
 @NoArgsConstructor

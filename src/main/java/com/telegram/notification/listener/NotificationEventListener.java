@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+
 @Component
 public class NotificationEventListener {
 
@@ -21,6 +22,7 @@ public class NotificationEventListener {
         this.notificationService = notificationService;
         this.chatMemberRepo = chatMemberRepo;
     }
+
 
     @Async
     @EventListener
@@ -38,6 +40,7 @@ public class NotificationEventListener {
     @Async
     @EventListener
     public void onMessageReply(ChatNotificationEvent.MessageReply event) {
+
         if (event.originalSenderId().equals(event.replierId())) return;
 
         notificationService.createAndSend(NotificationEvent.builder()
@@ -50,6 +53,7 @@ public class NotificationEventListener {
                 .content(truncate(event.content(), 100))
                 .build());
     }
+
 
     @Async
     @EventListener
@@ -103,6 +107,7 @@ public class NotificationEventListener {
                 .content("Missed call from " + event.callerName())
                 .build());
     }
+
 
     private void notifyOtherChatMembers(Long chatId, Long actorId, String actorName,
                                          NotificationType type, Long referenceId,

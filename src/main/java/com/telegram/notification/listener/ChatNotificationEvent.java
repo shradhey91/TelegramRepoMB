@@ -2,7 +2,6 @@ package com.telegram.notification.listener;
 
 public sealed interface ChatNotificationEvent {
 
-
     record NewMessage(
             Long chatId,
             Long senderId,
