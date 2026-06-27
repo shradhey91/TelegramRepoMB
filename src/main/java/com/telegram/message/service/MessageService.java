@@ -1,16 +1,11 @@
 package com.telegram.message.service;
 
 import com.telegram.chat.service.ChatService;
+import com.telegram.common.enums.MemberRole;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
-<<<<<<< HEAD
-import com.telegram.notification.dto.NotificationEvent;
-import com.telegram.notification.enums.NotificationType;
-import com.telegram.notification.service.NotificationService;
-=======
 import com.telegram.notification.listener.ChatNotificationEvent;
->>>>>>> main
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
@@ -49,24 +44,16 @@ public class MessageService {
     //private final AttachmentRepo attachmentRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
-<<<<<<< HEAD
-    private final NotificationService notificationService;
-=======
     //private final FileStorageService fileStorageService;
     private final ApplicationEventPublisher eventPublisher;
->>>>>>> main
 
     public MessageService(MessageRepo messageRepo, ChatRepo chatRepo,
                           ChatMemberRepo chatMemberRepo, UserRepo userRepo,
                          // AttachmentRepo attachmentRepo,
                           SimpMessagingTemplate messagingTemplate,
                           ChatService chatService,
-<<<<<<< HEAD
-                          NotificationService notificationService) {
-=======
                          // FileStorageService fileStorageService,
                           ApplicationEventPublisher eventPublisher) {
->>>>>>> main
         this.messageRepo = messageRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
@@ -74,12 +61,8 @@ public class MessageService {
         //this.attachmentRepo = attachmentRepo;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
-<<<<<<< HEAD
-        this.notificationService = notificationService;
-=======
         //this.fileStorageService = fileStorageService;
         this.eventPublisher = eventPublisher;
->>>>>>> main
     }
 
     @Transactional
@@ -148,33 +131,6 @@ public class MessageService {
         MessageResponse response = chatService.toMessageResponse(message);
         broadcastToChat(chat.getId(), WebSocketEvent.of("NEW_MESSAGE", response));
 
-<<<<<<< HEAD
-        String actorName = sender.getDisplayName() != null
-                ? sender.getDisplayName() : sender.getUsername();
-
-        String preview = actorName + ": " +
-                (request.content() != null && request.content().length() > 50
-                        ? request.content().substring(0, 50) + "..."
-                        : request.content());
-
-        chat.getMembers().forEach(member -> {
-            if (!member.getUser().getId().equals(senderId)) {
-                notificationService.createAndSend(
-                        NotificationEvent.builder()
-                                .recipientId(member.getUser().getId())
-                                .actorId(senderId)
-                                .actorName(actorName)
-                                .type(request.replyToId() != null
-                                        ? NotificationType.REPLY
-                                        : NotificationType.NEW_MESSAGE)
-                                .referenceId(message.getId())
-                                .chatId(chat.getId())
-                                .content(preview)
-                                .build()
-                );
-            }
-        });
-=======
         // ── Notification: new message ──
         String senderName = sender.getDisplayName() != null
                 ? sender.getDisplayName() : sender.getUsername();
@@ -189,7 +145,6 @@ public class MessageService {
                     message.getReplyTo().getSender().getId(),
                     message.getId(), request.content()));
         }
->>>>>>> main
 
         return response;
     }
@@ -233,8 +188,8 @@ public class MessageService {
             ChatMember member = chatMemberRepo.findByChatIdAndUserId(message.getChat().getId(), userId)
                     .orElseThrow(() -> new AccessDeniedException("You are not a member of this chat"));
 
-            if (member.getRole() != com.telegram.common.enums.MemberRole.OWNER &&
-                    member.getRole() != com.telegram.common.enums.MemberRole.ADMIN) {
+            if (member.getRole() != MemberRole.OWNER &&
+                    member.getRole() != MemberRole.ADMIN) {
                 throw new AccessDeniedException("You can only delete your own messages");
             }
         }
@@ -298,8 +253,7 @@ public class MessageService {
         broadcastToChat(chatId, WebSocketEvent.of("TYPING", Map.of(
                 "chatId", chatId,
                 "userId", userId,
-                "username", user.getDisplayName() != null
-                        ? user.getDisplayName() : user.getUsername(),
+                "username", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername(),
                 "isTyping", isTyping)));
     }
 

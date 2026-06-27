@@ -139,10 +139,6 @@ public class ChatService {
         Page<Chat> chatPage = chatRepo.findChatsByUserId(userId, pageable);
         List<Chat> chats = chatPage.getContent();
 
-<<<<<<< HEAD
-
-=======
->>>>>>> main
         List<Long> chatIds = chats.stream().map(Chat::getId).toList();
         Map<Long, Message> lastMessageMap = messageRepo.findLastMessagesByChatIds(chatIds)
                 .stream()
@@ -439,10 +435,6 @@ public class ChatService {
         Long replyToId = null;
         if (msg.getReplyTo() != null) {
             replyToId = msg.getReplyTo().getId();
-<<<<<<< HEAD
-
-=======
->>>>>>> main
             replyContent = msg.getReplyTo().getIsDeleted()
                     ? null
                     : msg.getReplyTo().getContent();

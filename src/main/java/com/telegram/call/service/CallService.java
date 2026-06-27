@@ -2,13 +2,7 @@ package com.telegram.call.service;
 
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
-<<<<<<< HEAD
-import com.telegram.notification.dto.NotificationEvent;
-import com.telegram.notification.enums.NotificationType;
-import com.telegram.notification.service.NotificationService;
-=======
 import com.telegram.notification.listener.ChatNotificationEvent;
->>>>>>> main
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -38,34 +32,23 @@ public class CallService {
     private final CallParticipantRepo participantRepo;
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
-<<<<<<< HEAD
-    private final NotificationService notificationService;
-=======
     private final ApplicationEventPublisher eventPublisher;
->>>>>>> main
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
                        SimpMessagingTemplate messagingTemplate,
-<<<<<<< HEAD
-                       NotificationService notificationService) {
-=======
                        ApplicationEventPublisher eventPublisher) {
->>>>>>> main
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
-<<<<<<< HEAD
-        this.notificationService = notificationService;
-=======
         this.eventPublisher = eventPublisher;
->>>>>>> main
     }
 
     @Transactional
     public CallResponse initiateCall(Long callerId, InitiateCallRequest request) {
+
         if (callerId.equals(request.receiverId())) {
             throw new IllegalArgumentException("You cannot call yourself");
         }
@@ -109,28 +92,11 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("INCOMING_CALL", response));
 
-<<<<<<< HEAD
-        String callerName = caller.getDisplayName() != null
-                ? caller.getDisplayName() : caller.getUsername();
-
-        notificationService.createAndSend(
-                NotificationEvent.builder()
-                        .recipientId(receiver.getId())
-                        .actorId(caller.getId())
-                        .actorName(callerName)
-                        .type(NotificationType.CALL_INCOMING)
-                        .referenceId(call.getId())
-                        .chatId(null)
-                        .content(callerName + " is calling you")
-                        .build()
-        );
-=======
         // ── Notification: incoming call ──
         String callerName = caller.getDisplayName() != null
                 ? caller.getDisplayName() : caller.getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
                 call.getId(), callerId, callerName, request.receiverId()));
->>>>>>> main
 
         return response;
     }
@@ -252,25 +218,6 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_ENDED", response));
 
-        String actorName = call.getCaller().getId().equals(userId)
-                ? (call.getCaller().getDisplayName() != null
-                   ? call.getCaller().getDisplayName() : call.getCaller().getUsername())
-                : (call.getReceiver().getDisplayName() != null
-                   ? call.getReceiver().getDisplayName() : call.getReceiver().getUsername());
-
-        notificationService.createAndSend(
-                NotificationEvent.builder()
-                        .recipientId(otherUser.getId())
-                        .actorId(userId)
-                        .actorName(actorName)
-                        .type(NotificationType.CALL_ENDED)
-                        .referenceId(call.getId())
-                        .chatId(null)
-                        .content("Call ended" + (call.getDurationSeconds() != null
-                                ? " · " + call.getDurationSeconds() + "s" : ""))
-                        .build()
-        );
-
         return response;
     }
 
@@ -296,29 +243,12 @@ public class CallService {
                 "/queue/calls",
                 WebSocketEvent.of("CALL_MISSED", response));
 
-<<<<<<< HEAD
-        String callerName = call.getCaller().getDisplayName() != null
-                ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
-
-        notificationService.createAndSend(
-                NotificationEvent.builder()
-                        .recipientId(call.getReceiver().getId())
-                        .actorId(call.getCaller().getId())
-                        .actorName(callerName)
-                        .type(NotificationType.CALL_MISSED)
-                        .referenceId(call.getId())
-                        .chatId(null)
-                        .content("Missed call from " + callerName)
-                        .build()
-        );
-=======
         // ── Notification: missed call ──
         String callerName = call.getCaller().getDisplayName() != null
                 ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
         eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(
                 call.getId(), call.getCaller().getId(), callerName,
                 call.getReceiver().getId()));
->>>>>>> main
     }
 
     @Transactional(readOnly = true)
