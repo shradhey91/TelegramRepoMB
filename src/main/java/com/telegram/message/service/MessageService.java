@@ -10,6 +10,7 @@ import com.telegram.notification.listener.ChatNotificationEvent;
 import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
+import java.time.ZoneId;
 import com.telegram.chat.entity.ChatMember;
 import com.telegram.message.entity.Message;
 import com.telegram.message.entity.MessageEditHistory;
@@ -141,14 +142,12 @@ public class MessageService {
         MessageResponse response = chatService.toMessageResponse(message);
         broadcastToChat(chat.getId(), WebSocketEvent.of("NEW_MESSAGE", response));
 
-        // ── Notification: new message ──
         String senderName = sender.getDisplayName() != null
                 ? sender.getDisplayName() : sender.getUsername();
 
         eventPublisher.publishEvent(new ChatNotificationEvent.NewMessage(
                 chat.getId(), senderId, senderName, message.getId(), request.content()));
 
-        // ── Notification: reply ──
         if (request.replyToId() != null && message.getReplyTo() != null) {
             eventPublisher.publishEvent(new ChatNotificationEvent.MessageReply(
                     chat.getId(), senderId, senderName,
