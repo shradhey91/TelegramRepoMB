@@ -28,8 +28,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -135,7 +135,7 @@ public class MessageService {
 //            message.setAttachments(attachments);
 //        }
 
-        chat.setUpdatedAt(LocalDateTime.now());
+        chat.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
         chatRepo.save(chat);
 
         MessageResponse response = chatService.toMessageResponse(message);
@@ -180,7 +180,7 @@ public class MessageService {
 
         message.setContent(request.content());
         message.setIsEdited(true);
-        message.setEditedAt(LocalDateTime.now());
+        message.setEditedAt(OffsetDateTime.now(ZoneOffset.UTC));
         messageRepo.save(message);
 
         MessageResponse response = chatService.toMessageResponse(message);

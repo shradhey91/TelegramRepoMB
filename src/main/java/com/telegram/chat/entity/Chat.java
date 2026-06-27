@@ -4,8 +4,9 @@ import com.telegram.auth.entity.User;
 import com.telegram.common.enums.ChatType;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,9 +43,9 @@ public class Chat {
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
@@ -56,12 +57,12 @@ public class Chat {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

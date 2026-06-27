@@ -3,7 +3,9 @@ package com.telegram.auth.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 
 @Entity
@@ -43,20 +45,20 @@ public class User {
         @Column(nullable = false)
         private Boolean isOnline;
 
-        private LocalDateTime lastSeenAt;
+        private OffsetDateTime lastSeenAt;
 
-        private LocalDateTime createdAt;
+        private OffsetDateTime createdAt;
 
-        private LocalDateTime updatedAt;
+        private OffsetDateTime updatedAt;
 
         @PrePersist
         protected void onCreate() {
-                createdAt = LocalDateTime.now();
-                updatedAt = LocalDateTime.now();
+                createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+                updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
 
         @PreUpdate
         protected void onUpdate() {
-                updatedAt = LocalDateTime.now();
+                updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
 }

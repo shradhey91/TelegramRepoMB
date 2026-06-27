@@ -3,7 +3,8 @@ package com.telegram.message.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "attachments", indexes = {
@@ -40,10 +41,10 @@ public class Attachment {
     @Column(length = 1024)
     private String thumbnailUrl;
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

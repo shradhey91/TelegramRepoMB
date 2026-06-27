@@ -4,7 +4,8 @@ import com.telegram.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "blocked_users", uniqueConstraints = {
@@ -32,10 +33,10 @@ public class BlockedUser {
     @JoinColumn(name = "blocked_id", nullable = false)
     private User blocked;
 
-    private LocalDateTime blockedAt;
+    private OffsetDateTime blockedAt;
 
     @PrePersist
     protected void onCreate() {
-        blockedAt = LocalDateTime.now();
+        blockedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

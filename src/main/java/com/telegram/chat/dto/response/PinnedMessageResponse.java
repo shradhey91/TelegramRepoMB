@@ -2,7 +2,7 @@ package com.telegram.chat.dto.response;
 
 import com.telegram.message.dto.response.MessageResponse;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record PinnedMessageResponse(
         Long id,
@@ -10,5 +10,5 @@ public record PinnedMessageResponse(
         MessageResponse message,
         Long pinnedById,
         String pinnedByName,
-        LocalDateTime pinnedAt
+        OffsetDateTime pinnedAt
 ) {}

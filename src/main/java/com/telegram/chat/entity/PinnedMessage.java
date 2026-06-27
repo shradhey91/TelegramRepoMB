@@ -5,7 +5,8 @@ import com.telegram.message.entity.Message;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "pinned_messages", uniqueConstraints = {
@@ -36,10 +37,10 @@ public class PinnedMessage {
     @JoinColumn(name = "pinned_by", nullable = false)
     private User pinnedBy;
 
-    private LocalDateTime pinnedAt;
+    private OffsetDateTime pinnedAt;
 
     @PrePersist
     protected void onCreate() {
-        pinnedAt = LocalDateTime.now();
+        pinnedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

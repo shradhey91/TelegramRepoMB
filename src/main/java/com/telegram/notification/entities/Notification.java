@@ -5,7 +5,8 @@ import com.telegram.notification.enums.NotificationType;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "notifications", indexes = {
@@ -47,10 +48,10 @@ public class Notification {
     @Builder.Default
     private Boolean isRead = false;
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

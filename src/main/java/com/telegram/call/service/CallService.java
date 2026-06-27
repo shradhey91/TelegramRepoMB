@@ -23,7 +23,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
@@ -120,7 +122,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.ACTIVE);
-        call.setStartedAt(LocalDateTime.now());
+        call.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallParticipant receiverParticipant = CallParticipant.builder()
@@ -153,7 +155,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.REJECTED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
@@ -179,7 +181,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.CANCELLED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
@@ -210,7 +212,7 @@ public class CallService {
 
         participantRepo.findByCallIdAndLeftAtIsNull(callId)
                 .forEach(p -> {
-                    p.setLeftAt(LocalDateTime.now());
+                    p.setLeftAt(OffsetDateTime.now(ZoneOffset.UTC));
                     participantRepo.save(p);
                 });
 
@@ -234,7 +236,7 @@ public class CallService {
         if (call.getStatus() != CallStatus.RINGING) return;
 
         call.setStatus(CallStatus.MISSED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);

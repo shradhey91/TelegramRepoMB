@@ -7,7 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
@@ -26,7 +27,7 @@ public class CallTimeoutScheduler {
 
     @Scheduled(fixedRate = 5000)
     public void expireTimedOutCalls() {
-        LocalDateTime cutoff = LocalDateTime.now().minusSeconds(RING_TIMEOUT_SECONDS);
+        OffsetDateTime cutoff = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(RING_TIMEOUT_SECONDS);
         List<Call> timedOut = callRepo.findTimedOutRingingCalls(cutoff);
 
         for (Call call : timedOut) {

@@ -20,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;  // FIX: Use Spring's @Transactional, not Jakarta's
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -48,8 +50,8 @@ public class StoryService {
                 .mediaUrl(request.mediaUrl())
                 .caption(request.caption())
                 .type(request.type())
-                .createdAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusHours(24))
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .expiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusHours(24))
                 .build();
 
         storyRepo.save(story);
@@ -59,7 +61,7 @@ public class StoryService {
 
     @Transactional(readOnly = true)
     public List<StoryGroupResponse> getStoryFeed(Long currentUserId) {
-        List<Story> stories = storyRepo.findByExpiresAtAfterOrderByCreatedAtDesc(LocalDateTime.now());
+        List<Story> stories = storyRepo.findByExpiresAtAfterOrderByCreatedAtDesc(OffsetDateTime.now(ZoneOffset.UTC));
 
         if (stories.isEmpty()) {
             return List.of();
@@ -108,7 +110,7 @@ public class StoryService {
     public void viewStory(Long storyId, Long viewerId) {
         Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
 
-        if (story.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (story.getExpiresAt().isBefore(OffsetDateTime.now(ZoneOffset.UTC))) {
             throw new IllegalArgumentException("Story expired");
         }
         if (story.getUser().getId().equals(viewerId)) {
@@ -120,7 +122,7 @@ public class StoryService {
         }
 
         User viewer = userRepo.findById(viewerId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        StoryView storyView = StoryView.builder().story(story).viewer(viewer).viewedAt(LocalDateTime.now()).build();
+        StoryView storyView = StoryView.builder().story(story).viewer(viewer).viewedAt(OffsetDateTime.now(ZoneOffset.UTC)).build();
         storyViewRepo.save(storyView);
     }
 
@@ -205,8 +207,8 @@ public class StoryService {
                 .mediaUrl(upload.fileName())
                 .caption(caption)
                 .type(type)
-                .createdAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusHours(24))
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .expiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusHours(24))
                 .build();
 
         storyRepo.save(story);

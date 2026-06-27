@@ -2,7 +2,7 @@ package com.telegram.chat.dto.response;
 
 import com.telegram.common.enums.MemberRole;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record ChatMemberResponse(
         Long userId,
@@ -11,5 +11,5 @@ public record ChatMemberResponse(
         String avatarUrl,
         MemberRole role,
         Boolean isOnline,
-        LocalDateTime joinedAt
+        OffsetDateTime joinedAt
 ) {}
