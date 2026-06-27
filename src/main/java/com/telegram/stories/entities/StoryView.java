@@ -15,8 +15,6 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Builder
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 public class StoryView {
 
     @Id
