@@ -7,6 +7,7 @@ import com.telegram.notification.entities.Notification;
 
 import com.telegram.notification.repository.NotificationRepository;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -17,34 +18,27 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
 
-    public NotificationService(
-            NotificationRepository notificationRepository,
-            UserRepo userRepo,
-            SimpMessagingTemplate messagingTemplate
-    ) {
-        this.notificationRepository = notificationRepository;
-        this.userRepo = userRepo;
-        this.messagingTemplate = messagingTemplate;
-    }
-
     public void createAndSend(NotificationEvent event) {
-        User recipient = userRepo.findById(event.getRecipientId())
-                .orElseThrow(() -> new RuntimeException("User not found: " + event.getRecipientId()));
+
+        User recipient = userRepo.findById(event.recipientId())
+                .orElseThrow(() -> new RuntimeException(
+                        "User not found: " + event.recipientId()));
 
         Notification notification = Notification.builder()
                 .recipient(recipient)
-                .actorId(event.getActorId())
-                .actorName(event.getActorName())
-                .type(event.getType())
-                .referenceId(event.getReferenceId())
-                .chatId(event.getChatId())
-                .content(event.getContent())
+                .actorId(event.actorId())
+                .actorName(event.actorName())
+                .type(event.type())
+                .referenceId(event.referenceId())
+                .chatId(event.chatId())
+                .content(event.content())
                 .isRead(false)
                 .build();
 

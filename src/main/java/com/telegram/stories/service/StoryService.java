@@ -61,49 +61,80 @@ public class StoryService {
 
     @Transactional(readOnly = true)
     public List<StoryGroupResponse> getStoryFeed(Long currentUserId) {
+
         List<Story> stories = storyRepo.findByExpiresAtAfterOrderByCreatedAtDesc(OffsetDateTime.now(ZoneOffset.UTC));
 
         if (stories.isEmpty()) {
             return List.of();
         }
 
-        List<Long> allStoryIds = stories.stream().map(Story::getId).toList();
+        List<Long> allStoryIds = new ArrayList<>();
 
-        Set<Long> viewedStoryIds = new HashSet<>(
-                storyViewRepo.findViewedStoryIds(allStoryIds, currentUserId));
+        for (Story story : stories) {
+            allStoryIds.add(story.getId());
+        }
 
-        Map<Long, Long> viewCountMap = storyViewRepo.countByStoryIds(allStoryIds)
-                .stream()
-                .collect(Collectors.toMap(
-                        row -> (Long) row[0],
-                        row -> (Long) row[1]
-                ));
+        Set<Long> viewedStoryIds = new HashSet<>(storyViewRepo.findViewedStoryIds(allStoryIds, currentUserId));
 
-        Map<Long, List<Story>> grouped = stories.stream()
-                .collect(Collectors.groupingBy(story -> story.getUser().getId()));
+        List<Object[]> viewCounts = storyViewRepo.countByStoryIds(allStoryIds);
 
-        return grouped.entrySet().stream().map(entry -> {
+        Map<Long, Long> viewCountMap = new HashMap<>();
+
+        for (Object[] row : viewCounts) {
+            Long storyId = (Long) row[0];
+            Long viewCount = (Long) row[1];
+            viewCountMap.put(storyId, viewCount);
+        }
+
+        Map<Long, List<Story>> groupedStories = new HashMap<>();
+
+        for (Story story : stories) {
+            Long userId = story.getUser().getId();
+            if (!groupedStories.containsKey(userId)) {
+                groupedStories.put(userId, new ArrayList<>());
+            }
+            groupedStories.get(userId).add(story);
+        }
+
+        List<StoryGroupResponse> response = new ArrayList<>();
+
+        for (Map.Entry<Long, List<Story>> entry : groupedStories.entrySet()) {
+
             Long userId = entry.getKey();
-            List<StoryResponse> storyResponses = entry.getValue().stream()
-                    .map(story -> {
-                        boolean viewed = userId.equals(currentUserId)
-                                || viewedStoryIds.contains(story.getId());
-                        long viewCount = viewCountMap.getOrDefault(story.getId(), 0L);
-                        return toResponse(story, viewed, viewCount);
-                    })
-                    .toList();
+            List<Story> userStories = entry.getValue();
+            List<StoryResponse> storyResponses = new ArrayList<>();
 
-            Story firstStory = entry.getValue().get(0);
-            boolean hasUnseenStories = storyResponses.stream().anyMatch(s -> !s.viewed());
+            for (Story story : userStories) {
+                boolean viewed = userId.equals(currentUserId) || viewedStoryIds.contains(story.getId());
 
-            return new StoryGroupResponse(
+                long viewCount = viewCountMap.getOrDefault(story.getId(), 0L);
+
+                storyResponses.add(toResponse(story, viewed, viewCount));
+            }
+
+            boolean  hasUnseenStories  = false;
+
+            for (StoryResponse storyResponse : storyResponses) {
+                if (!storyResponse.viewed()) {
+                    hasUnseenStories = true;
+                    break;
+                }
+            }
+
+            Story firstStory = userStories.get(0);
+
+            StoryGroupResponse storyGroup = new StoryGroupResponse(
                     userId,
                     firstStory.getUser().getUsername(),
                     firstStory.getUser().getAvatarUrl(),
                     hasUnseenStories,
                     storyResponses
             );
-        }).toList();
+
+            response.add(storyGroup);
+        }
+
+        return response;
     }
 
     @Transactional
@@ -128,24 +159,28 @@ public class StoryService {
 
     @Transactional(readOnly = true)
     public List<StoryViewerResponse> getStoryViewers(Long storyId, Long currentUserId) {
-        Story story = storyRepo.findById(storyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Story not found"));
+
+        Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
 
         if (!story.getUser().getId().equals(currentUserId)) {
             throw new AccessDeniedException("Only story owner can view viewers");
         }
 
-        return storyViewRepo
-                .findByStoryIdOrderByViewedAtDesc(storyId)
-                .stream()
-                .map(view -> new StoryViewerResponse(
-                        view.getViewer().getId(),
-                        view.getViewer().getUsername(),
-                        view.getViewer().getDisplayName(),
-                        view.getViewer().getAvatarUrl(),
-                        view.getViewedAt()
-                ))
-                .toList();
+        List<StoryView> storyViews = storyViewRepo.findByStoryIdOrderByViewedAtDesc(storyId);
+
+        List<StoryViewerResponse> responses = new ArrayList<>();
+
+        for (StoryView view : storyViews) {
+            StoryViewerResponse response = new StoryViewerResponse(
+                    view.getViewer().getId(),
+                    view.getViewer().getUsername(),
+                    view.getViewer().getDisplayName(),
+                    view.getViewer().getAvatarUrl(),
+                    view.getViewedAt()
+            );
+            responses.add(response);
+        }
+        return responses;
     }
 
     private StoryResponse toResponse(Story story, boolean viewed, long viewerCount) {
@@ -166,33 +201,31 @@ public class StoryService {
 
     @Transactional
     public void deleteStory(Long storyId, Long currentUserId) {
+
         Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
         if (!story.getUser().getId().equals(currentUserId)) {
             throw new AccessDeniedException("You can only delete your own story");
         }
-        storageServiceProvider.delete(
-                story.getMediaUrl(),
-                story.getMediaFileId()
-        );
+        storageServiceProvider.delete(story.getMediaUrl(), story.getMediaFileId());
         storyRepo.delete(story);
+
     }
 
     @Transactional(readOnly = true)
     public byte[] getStoryMedia(Long storyId) {
-        Story story = storyRepo.findById(storyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Story not found"));
 
-        return storageServiceProvider.download(
-                story.getMediaUrl()
-        );
+        Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
+        return storageServiceProvider.download(story.getMediaUrl());
+
     }
 
     @Transactional
     public StoryResponse uploadStory(Long userId, MultipartFile file, String caption) {
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        User user = userRepo.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         UploadResult upload = storageServiceProvider.upload(file, StorageFolder.STORIES, userId);
+
         StoryType type;
 
         if (file.getContentType() != null && file.getContentType().startsWith("video/")) {

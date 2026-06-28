@@ -49,37 +49,31 @@ public class UserController {
     }
 
     @PutMapping("/me")
-    @Operation(summary = "Update the current user's profile (display name, bio, avatar URL)")
+    @Operation(summary = "Update the current user's profile")
     public ResponseEntity<UserProfileResponse> updateProfile(
             @RequestBody UpdateProfileRequest request,
             @AuthenticationPrincipal CustomUserDetails user) {
         return ResponseEntity.ok(userService.updateProfile(user.getId(), request));
     }
 
-    // ─── NEW: Upload Avatar ─────────────────────────────────────────────
-
     @PostMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Upload a new avatar image (max 5MB, image files only)")
+    @Operation(summary = "Upload a new avatar image")
     public ResponseEntity<UserProfileResponse> uploadAvatar(
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal CustomUserDetails user) {
         return ResponseEntity.ok(userService.uploadAvatar(user.getId(), file));
     }
 
-    // ─── NEW: Delete Account ────────────────────────────────────────────
-
     @DeleteMapping("/me")
-    @Operation(summary = "Delete (anonymize) the current user's account — this is irreversible")
+    @Operation(summary = "Delete the current user's account")
     public ResponseEntity<Map<String, String>> deleteAccount(
             @AuthenticationPrincipal CustomUserDetails user) {
         userService.deleteAccount(user.getId());
         return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
     }
 
-    // ─── NEW: Block / Unblock ───────────────────────────────────────────
-
     @PostMapping("/{userId}/block")
-    @Operation(summary = "Block a user — prevents messages and calls between you")
+    @Operation(summary = "Block a user prevents messages and calls between you")
     public ResponseEntity<Map<String, String>> blockUser(
             @PathVariable Long userId,
             @AuthenticationPrincipal CustomUserDetails user) {
