@@ -3,6 +3,7 @@ package com.telegram.notification.controller;
 import com.telegram.notification.dto.NotificationResponse;
 import com.telegram.notification.service.NotificationService;
 import com.telegram.auth.security.CustomUserDetails;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,13 +14,10 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/notifications")
+@RequiredArgsConstructor
 public class NotificationController {
 
     private final NotificationService notificationService;
-
-    public NotificationController(NotificationService notificationService) {
-        this.notificationService = notificationService;
-    }
 
     @GetMapping
     public ResponseEntity<Page<NotificationResponse>> getNotifications(

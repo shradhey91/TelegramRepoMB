@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -50,23 +51,27 @@ public class UserService {
     }
 
     public List<UserProfileResponse> searchUsers(String query) {
-        return userRepo.searchUsers(query, PageRequest.of(0, SEARCH_MAX_RESULTS)).stream()
-                .map(this::toProfile)
-                .toList();
+
+        List<User> users = userRepo.searchUsers(query, PageRequest.of(0, SEARCH_MAX_RESULTS));
+
+        List<UserProfileResponse> responses = new ArrayList<>();
+
+        for (User user : users) {
+            responses.add(toProfile(user));
+        }
+
+        return responses;
     }
 
     @Transactional
     public UserProfileResponse updateProfile(Long userId, UpdateProfileRequest request) {
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        User user = userRepo.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (request.displayName() != null) {
             String trimmed = request.displayName().trim();
             if (trimmed.isEmpty()) {
                 throw new IllegalArgumentException("Display name cannot be empty");
-            }
-            if (trimmed.length() > 100) {
-                throw new IllegalArgumentException("Display name cannot exceed 100 characters");
             }
             user.setDisplayName(trimmed);
         }
@@ -88,8 +93,8 @@ public class UserService {
 
     @Transactional
     public UserProfileResponse uploadAvatar(Long userId, MultipartFile file) {
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        User user = userRepo.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
@@ -121,20 +126,9 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         chatMemberRepo.deleteAllByUserId(userId);
-
         notificationRepository.deleteAllByRecipientId(userId);
-
         blockedUserRepo.deleteAllByBlockerIdOrBlockedId(userId, userId);
-
-        user.setUsername("deleted_" + userId);
-        user.setEmail("deleted_" + userId + "@deleted.local");
-        user.setDisplayName("Deleted Account");
-        user.setPasswordHash("");
-        user.setBio(null);
-        user.setAvatarUrl(null);
-        user.setIsOnline(false);
-        user.setLastSeenAt(null);
-        userRepo.save(user);
+        userRepo.delete(user);
 
     }
 
