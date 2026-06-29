@@ -15,17 +15,7 @@ import java.util.Optional;
 @Repository
 public interface ChatRepo extends JpaRepository<Chat, Long> {
 
-    @Query("""
-            SELECT DISTINCT c FROM Chat c
-            JOIN FETCH c.members m
-            JOIN FETCH m.user
-            JOIN FETCH c.createdBy
-            WHERE c.id IN (
-                SELECT cm.chat.id FROM ChatMember cm WHERE cm.user.id = :userId
-            )
-            ORDER BY c.updatedAt DESC
-            """)
-    List<Chat> findChatsByUserId(@Param("userId") Long userId);
+
 
     @Query(value = """
             SELECT DISTINCT c FROM Chat c

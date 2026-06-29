@@ -1,6 +1,6 @@
 package com.telegram.user.dto.response;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record UserProfileResponse(
         Long id,
@@ -10,6 +10,6 @@ public record UserProfileResponse(
         String bio,
         String avatarUrl,
         Boolean isOnline,
-        LocalDateTime lastSeenAt,
-        LocalDateTime createdAt
+        OffsetDateTime lastSeenAt,
+        OffsetDateTime createdAt
 ) {}

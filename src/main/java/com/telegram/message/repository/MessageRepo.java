@@ -52,4 +52,14 @@ public interface MessageRepo extends JpaRepository<Message, Long> {
     long countUnreadMessages(@Param("chatId") Long chatId,
                              @Param("afterMessageId") Long afterMessageId,
                              @Param("userId") Long userId);
+
+
+    @Query("""
+            SELECT COUNT(m) FROM Message m
+            WHERE m.chat.id = :chatId
+              AND m.isDeleted = false
+              AND m.sender.id <> :userId
+            """)
+    long countAllUnreadMessages(@Param("chatId") Long chatId,
+                                @Param("userId") Long userId);
 }

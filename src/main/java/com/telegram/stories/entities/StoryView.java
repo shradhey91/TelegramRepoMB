@@ -1,16 +1,20 @@
 package com.telegram.stories.entities;
 
 import com.telegram.auth.entity.User;
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
 @Entity
+@AllArgsConstructor
+@NoArgsConstructor
 public class StoryView {
 
     @Id
@@ -23,5 +27,5 @@ public class StoryView {
     @ManyToOne
     private User viewer;
 
-    private LocalDateTime viewedAt;
+    private OffsetDateTime viewedAt;
 }

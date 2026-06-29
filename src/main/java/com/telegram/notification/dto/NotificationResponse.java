@@ -3,7 +3,7 @@ package com.telegram.notification.dto;
 import com.telegram.notification.enums.NotificationType;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Getter
 @Setter
@@ -19,5 +19,5 @@ public class NotificationResponse {
     private Long chatId;
     private String content;
     private Boolean isRead;
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 }

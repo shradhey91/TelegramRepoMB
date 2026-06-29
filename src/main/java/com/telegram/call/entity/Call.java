@@ -7,7 +7,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "calls", indexes = {
@@ -43,24 +45,24 @@ public class Call {
     @Column(nullable = false, length = 20)
     private CallStatus status;
 
-    private LocalDateTime startedAt;
+    private OffsetDateTime startedAt;
 
-    private LocalDateTime endedAt;
+    private OffsetDateTime endedAt;
 
     @Column(nullable = false)
     @Builder.Default
     private Long durationSeconds = 0L;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void endCall() {
-        this.endedAt = LocalDateTime.now();
+        this.endedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.status = CallStatus.ENDED;
         if (this.startedAt != null) {
             this.durationSeconds = Duration.between(this.startedAt, this.endedAt).getSeconds();

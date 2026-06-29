@@ -7,6 +7,7 @@ import com.telegram.auth.security.CustomUserDetails;
 import com.telegram.message.service.MessageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -16,14 +17,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/messages")
-@Tag(name = "Messages", description = "Send, edit, delete, and fetch messages via REST")
+
+@RequiredArgsConstructor
 public class MessageController {
 
     private final MessageService messageService;
-
-    public MessageController(MessageService messageService) {
-        this.messageService = messageService;
-    }
 
     @PostMapping
     @Operation(summary = "Send a message to a chat")

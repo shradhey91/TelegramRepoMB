@@ -9,7 +9,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionConnectEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 @Component
@@ -50,13 +51,13 @@ public class WebSocketEventListener {
 
         userRepo.findById(userId).ifPresent(user -> {
             user.setIsOnline(false);
-            user.setLastSeenAt(LocalDateTime.now());
+            user.setLastSeenAt(OffsetDateTime.now(ZoneOffset.UTC));
             userRepo.save(user);
 
             messagingTemplate.convertAndSend("/topic/presence",
                     (Object) Map.of("userId", userId,
                             "isOnline", false,
-                            "lastSeenAt", LocalDateTime.now().toString()));
+                            "lastSeenAt", OffsetDateTime.now(ZoneOffset.UTC).toString()));
         });
     }
 

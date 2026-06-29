@@ -12,13 +12,11 @@ public class CustomUserDetails implements UserDetails {
 
     private final Long id;
     private final String email;
-    private final String username;
     private final String password;
 
     public CustomUserDetails(User user) {
         this.id = user.getId();
         this.email = user.getEmail();
-        this.username = user.getUsername();
         this.password = user.getPasswordHash();
     }
 

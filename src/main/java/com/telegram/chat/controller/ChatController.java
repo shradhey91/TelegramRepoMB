@@ -1,5 +1,6 @@
 package com.telegram.chat.controller;
 
+import com.telegram.chat.dto.request.ChangeRoleRequest;
 import com.telegram.chat.dto.request.CreateChatRequest;
 import com.telegram.chat.dto.response.ChatResponse;
 import com.telegram.chat.dto.response.PinnedMessageResponse;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -76,6 +78,18 @@ public class ChatController {
         Long requesterId = extractUserId(authentication);
         chatService.removeMemberFromChat(chatId, userId, requesterId);
         return ResponseEntity.ok(Map.of("message", "Member removed successfully"));
+    }
+
+
+    @PutMapping("/{chatId}/members/{userId}/role")
+    @Operation(summary = "Change a member's role (OWNER only). Allowed roles: ADMIN, MEMBER")
+    public ResponseEntity<Map<String, String>> changeMemberRole(
+            @PathVariable Long chatId,
+            @PathVariable Long userId,
+            @RequestBody ChangeRoleRequest request,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        chatService.changeMemberRole(chatId, userId, request.newRole(), user.getId());
+        return ResponseEntity.ok(Map.of("message", "Role updated to " + request.newRole()));
     }
 
 

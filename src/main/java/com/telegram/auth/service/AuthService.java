@@ -10,13 +10,14 @@ import com.telegram.common.exception.ResourceNotFoundException;
 import com.telegram.user.repository.UserRepo;
 import com.telegram.auth.security.JwtUtil;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Service
 public class AuthService {
@@ -68,11 +69,15 @@ public class AuthService {
     }
 
     public AuthResponse login(String email, String password) {
-        User user = userRepo.findByEmail(email.toLowerCase().trim())
-                .orElseThrow(() -> new ResourceNotFoundException("Invalid email or password"));
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(email.toLowerCase().trim(), password));
+        } catch (BadCredentialsException e) {
+            throw new BadCredentialsException("Invalid email or password");
+        }
 
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(email.toLowerCase().trim(), password));
+        User user = userRepo.findByEmail(email.toLowerCase().trim())
+                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
         user.setIsOnline(true);
         userRepo.save(user);
@@ -84,7 +89,7 @@ public class AuthService {
     public void logout(Long userId) {
         userRepo.findById(userId).ifPresent(user -> {
             user.setIsOnline(false);
-            user.setLastSeenAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+            user.setLastSeenAt(OffsetDateTime.now(ZoneOffset.UTC));
             userRepo.save(user);
         });
     }

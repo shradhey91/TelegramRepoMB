@@ -16,23 +16,31 @@ import com.telegram.stories.entities.StoryView;
 import com.telegram.stories.repository.StoryRepo;
 import com.telegram.stories.repository.StoryViewRepo;
 import com.telegram.user.repository.UserRepo;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;  // FIX: Use Spring's @Transactional, not Jakarta's
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.*;
 import java.util.stream.Collectors;
 
-@RequiredArgsConstructor
 @Service
 public class StoryService {
     private final UserRepo userRepo;
     private final StoryRepo storyRepo;
     private final StoryViewRepo storyViewRepo;
     private final StorageServiceProvider storageServiceProvider;
+
+    public StoryService(UserRepo userRepo, StoryRepo storyRepo,
+                        StoryViewRepo storyViewRepo,
+                        StorageServiceProvider storageServiceProvider) {
+        this.userRepo = userRepo;
+        this.storyRepo = storyRepo;
+        this.storyViewRepo = storyViewRepo;
+        this.storageServiceProvider = storageServiceProvider;
+    }
 
     @Transactional
     public StoryResponse createStory(Long userId, CreateStoryRequest request) {
@@ -42,47 +50,98 @@ public class StoryService {
                 .mediaUrl(request.mediaUrl())
                 .caption(request.caption())
                 .type(request.type())
-                .createdAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusHours(24))
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .expiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusHours(24))
                 .build();
 
         storyRepo.save(story);
 
-        return toResponse(story, userId);
+        return toResponse(story, false, 0);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<StoryGroupResponse> getStoryFeed(Long currentUserId) {
 
-        List<Story> stories = storyRepo.findByExpiresAtAfterOrderByCreatedAtDesc(LocalDateTime.now());
+        List<Story> stories = storyRepo.findByExpiresAtAfterOrderByCreatedAtDesc(OffsetDateTime.now(ZoneOffset.UTC));
 
-        Map<Long, List<Story>> grouped = stories.stream().collect(Collectors.groupingBy(story -> story.getUser().getId()));
+        if (stories.isEmpty()) {
+            return List.of();
+        }
 
-        return grouped.entrySet().stream().map(entry -> {
-                    Long userId = entry.getKey();
-                    List<StoryResponse> storyResponses =
-                            entry.getValue().stream().map(story -> toResponse(story, currentUserId)).toList();
-                    Story firstStory = entry.getValue().get(0);
+        List<Long> allStoryIds = new ArrayList<>();
 
-                    boolean hasUnseenStories = storyResponses.stream().anyMatch(story -> !story.viewed());
+        for (Story story : stories) {
+            allStoryIds.add(story.getId());
+        }
 
-                    return new StoryGroupResponse(
-                            userId,
-                            firstStory.getUser().getUsername(),
-                            firstStory.getUser().getAvatarUrl(),
-                            hasUnseenStories,
-                            storyResponses
-                    );
-                })
-                .toList();
+        Set<Long> viewedStoryIds = new HashSet<>(storyViewRepo.findViewedStoryIds(allStoryIds, currentUserId));
+
+        List<Object[]> viewCounts = storyViewRepo.countByStoryIds(allStoryIds);
+
+        Map<Long, Long> viewCountMap = new HashMap<>();
+
+        for (Object[] row : viewCounts) {
+            Long storyId = (Long) row[0];
+            Long viewCount = (Long) row[1];
+            viewCountMap.put(storyId, viewCount);
+        }
+
+        Map<Long, List<Story>> groupedStories = new HashMap<>();
+
+        for (Story story : stories) {
+            Long userId = story.getUser().getId();
+            if (!groupedStories.containsKey(userId)) {
+                groupedStories.put(userId, new ArrayList<>());
+            }
+            groupedStories.get(userId).add(story);
+        }
+
+        List<StoryGroupResponse> response = new ArrayList<>();
+
+        for (Map.Entry<Long, List<Story>> entry : groupedStories.entrySet()) {
+
+            Long userId = entry.getKey();
+            List<Story> userStories = entry.getValue();
+            List<StoryResponse> storyResponses = new ArrayList<>();
+
+            for (Story story : userStories) {
+                boolean viewed = userId.equals(currentUserId) || viewedStoryIds.contains(story.getId());
+
+                long viewCount = viewCountMap.getOrDefault(story.getId(), 0L);
+
+                storyResponses.add(toResponse(story, viewed, viewCount));
+            }
+
+            boolean  hasUnseenStories  = false;
+
+            for (StoryResponse storyResponse : storyResponses) {
+                if (!storyResponse.viewed()) {
+                    hasUnseenStories = true;
+                    break;
+                }
+            }
+
+            Story firstStory = userStories.get(0);
+
+            StoryGroupResponse storyGroup = new StoryGroupResponse(
+                    userId,
+                    firstStory.getUser().getUsername(),
+                    firstStory.getUser().getAvatarUrl(),
+                    hasUnseenStories,
+                    storyResponses
+            );
+
+            response.add(storyGroup);
+        }
+
+        return response;
     }
 
     @Transactional
     public void viewStory(Long storyId, Long viewerId) {
-
         Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
 
-        if (story.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (story.getExpiresAt().isBefore(OffsetDateTime.now(ZoneOffset.UTC))) {
             throw new IllegalArgumentException("Story expired");
         }
         if (story.getUser().getId().equals(viewerId)) {
@@ -94,37 +153,37 @@ public class StoryService {
         }
 
         User viewer = userRepo.findById(viewerId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        StoryView storyView = StoryView.builder().story(story).viewer(viewer).viewedAt(LocalDateTime.now()).build();
+        StoryView storyView = StoryView.builder().story(story).viewer(viewer).viewedAt(OffsetDateTime.now(ZoneOffset.UTC)).build();
         storyViewRepo.save(storyView);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<StoryViewerResponse> getStoryViewers(Long storyId, Long currentUserId) {
 
-        Story story = storyRepo.findById(storyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Story not found"));
+        Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
 
         if (!story.getUser().getId().equals(currentUserId)) {
             throw new AccessDeniedException("Only story owner can view viewers");
         }
 
-        return storyViewRepo
-                .findByStoryIdOrderByViewedAtDesc(storyId)
-                .stream()
-                .map(view -> new StoryViewerResponse(
-                        view.getViewer().getId(),
-                        view.getViewer().getUsername(),
-                        view.getViewer().getDisplayName(),
-                        view.getViewer().getAvatarUrl(),
-                        view.getViewedAt()
-                ))
-                .toList();
+        List<StoryView> storyViews = storyViewRepo.findByStoryIdOrderByViewedAtDesc(storyId);
+
+        List<StoryViewerResponse> responses = new ArrayList<>();
+
+        for (StoryView view : storyViews) {
+            StoryViewerResponse response = new StoryViewerResponse(
+                    view.getViewer().getId(),
+                    view.getViewer().getUsername(),
+                    view.getViewer().getDisplayName(),
+                    view.getViewer().getAvatarUrl(),
+                    view.getViewedAt()
+            );
+            responses.add(response);
+        }
+        return responses;
     }
 
-    private StoryResponse toResponse(Story story, Long currentUserId) {
-        boolean viewed = story.getUser().getId().equals(currentUserId) || storyViewRepo.existsByStoryIdAndViewerId(story.getId(), currentUserId);
-        long viewerCount = storyViewRepo.countByStoryId(story.getId());
-
+    private StoryResponse toResponse(Story story, boolean viewed, long viewerCount) {
         return new StoryResponse(
                 story.getId(),
                 story.getUser().getId(),
@@ -147,31 +206,26 @@ public class StoryService {
         if (!story.getUser().getId().equals(currentUserId)) {
             throw new AccessDeniedException("You can only delete your own story");
         }
-        storageServiceProvider.delete(
-                story.getMediaUrl(),
-                story.getMediaFileId()
-        );
+        storageServiceProvider.delete(story.getMediaUrl(), story.getMediaFileId());
         storyRepo.delete(story);
+
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public byte[] getStoryMedia(Long storyId) {
 
-        Story story = storyRepo.findById(storyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Story not found"));
+        Story story = storyRepo.findById(storyId).orElseThrow(() -> new ResourceNotFoundException("Story not found"));
+        return storageServiceProvider.download(story.getMediaUrl());
 
-        return storageServiceProvider.download(
-                story.getMediaUrl()
-        );
     }
 
     @Transactional
     public StoryResponse uploadStory(Long userId, MultipartFile file, String caption) {
 
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepo.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         UploadResult upload = storageServiceProvider.upload(file, StorageFolder.STORIES, userId);
+
         StoryType type;
 
         if (file.getContentType() != null && file.getContentType().startsWith("video/")) {
@@ -186,11 +240,11 @@ public class StoryService {
                 .mediaUrl(upload.fileName())
                 .caption(caption)
                 .type(type)
-                .createdAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusHours(24))
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .expiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusHours(24))
                 .build();
 
         storyRepo.save(story);
-        return toResponse(story, userId);
+        return toResponse(story, true, 0);
     }
 }

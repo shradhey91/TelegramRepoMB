@@ -3,7 +3,7 @@ package com.telegram.chat.dto.response;
 import com.telegram.message.dto.response.MessageResponse;
 import com.telegram.common.enums.ChatType;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public record ChatResponse(
@@ -14,7 +14,7 @@ public record ChatResponse(
         String avatarUrl,
         String inviteLink,
         Long createdById,
-        LocalDateTime createdAt,
+        OffsetDateTime createdAt,
         List<ChatMemberResponse> members,
         MessageResponse lastMessage,
         long unreadCount

@@ -3,6 +3,7 @@ package com.telegram.call.service;
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
 import com.telegram.notification.listener.ChatNotificationEvent;
+import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
@@ -22,7 +23,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
@@ -33,17 +36,19 @@ public class CallService {
     private final UserRepo userRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final BlockService blockService;
 
     public CallService(CallRepo callRepo,
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
                        SimpMessagingTemplate messagingTemplate,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,BlockService blockService) {
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
         this.eventPublisher = eventPublisher;
+        this.blockService = blockService;
     }
 
     @Transactional
@@ -51,6 +56,10 @@ public class CallService {
 
         if (callerId.equals(request.receiverId())) {
             throw new IllegalArgumentException("You cannot call yourself");
+        }
+
+        if (blockService.isBlocked(callerId, request.receiverId())) {
+            throw new AccessDeniedException("Cannot call this user — there is a block between you");
         }
 
         User caller = userRepo.findById(callerId)
@@ -113,7 +122,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.ACTIVE);
-        call.setStartedAt(LocalDateTime.now());
+        call.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallParticipant receiverParticipant = CallParticipant.builder()
@@ -146,7 +155,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.REJECTED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
@@ -172,7 +181,7 @@ public class CallService {
         }
 
         call.setStatus(CallStatus.CANCELLED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
@@ -203,7 +212,7 @@ public class CallService {
 
         participantRepo.findByCallIdAndLeftAtIsNull(callId)
                 .forEach(p -> {
-                    p.setLeftAt(LocalDateTime.now());
+                    p.setLeftAt(OffsetDateTime.now(ZoneOffset.UTC));
                     participantRepo.save(p);
                 });
 
@@ -227,7 +236,7 @@ public class CallService {
         if (call.getStatus() != CallStatus.RINGING) return;
 
         call.setStatus(CallStatus.MISSED);
-        call.setEndedAt(LocalDateTime.now());
+        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
         CallResponse response = toCallResponse(call);
