@@ -4,6 +4,7 @@ import com.telegram.notification.dto.NotificationEvent;
 import com.telegram.notification.enums.NotificationType;
 import com.telegram.notification.service.NotificationService;
 import com.telegram.chat.repository.ChatMemberRepo;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -12,17 +13,11 @@ import java.util.List;
 
 
 @Component
+@RequiredArgsConstructor
 public class NotificationEventListener {
 
     private final NotificationService notificationService;
     private final ChatMemberRepo chatMemberRepo;
-
-    public NotificationEventListener(NotificationService notificationService,
-                                     ChatMemberRepo chatMemberRepo) {
-        this.notificationService = notificationService;
-        this.chatMemberRepo = chatMemberRepo;
-    }
-
 
     @Async
     @EventListener
@@ -43,15 +38,17 @@ public class NotificationEventListener {
 
         if (event.originalSenderId().equals(event.replierId())) return;
 
-        notificationService.createAndSend(NotificationEvent.builder()
-                .recipientId(event.originalSenderId())
-                .actorId(event.replierId())
-                .actorName(event.replierName())
-                .type(NotificationType.REPLY)
-                .referenceId(event.messageId())
-                .chatId(event.chatId())
-                .content(truncate(event.content(), 100))
-                .build());
+        notificationService.createAndSend(
+                new NotificationEvent(
+                        event.originalSenderId(),
+                        event.replierId(),
+                        event.replierName(),
+                        NotificationType.REPLY,
+                        event.messageId(),
+                        event.chatId(),
+                        truncate(event.content(), 100)
+                )
+        );
     }
 
 
@@ -85,27 +82,33 @@ public class NotificationEventListener {
     @Async
     @EventListener
     public void onIncomingCall(ChatNotificationEvent.IncomingCall event) {
-        notificationService.createAndSend(NotificationEvent.builder()
-                .recipientId(event.receiverId())
-                .actorId(event.callerId())
-                .actorName(event.callerName())
-                .type(NotificationType.CALL_INCOMING)
-                .referenceId(event.callId())
-                .content(event.callerName() + " is calling you")
-                .build());
+        notificationService.createAndSend(
+                new NotificationEvent(
+                        event.receiverId(),
+                        event.callerId(),
+                        event.callerName(),
+                        NotificationType.CALL_INCOMING,
+                        event.callId(),
+                        null,
+                        event.callerName() + " is calling you"
+                )
+        );
     }
 
     @Async
     @EventListener
     public void onMissedCall(ChatNotificationEvent.MissedCall event) {
-        notificationService.createAndSend(NotificationEvent.builder()
-                .recipientId(event.receiverId())
-                .actorId(event.callerId())
-                .actorName(event.callerName())
-                .type(NotificationType.CALL_MISSED)
-                .referenceId(event.callId())
-                .content("Missed call from " + event.callerName())
-                .build());
+        notificationService.createAndSend(
+                new NotificationEvent(
+                        event.receiverId(),
+                        event.callerId(),
+                        event.callerName(),
+                        NotificationType.CALL_MISSED,
+                        event.callId(),
+                        null,
+                        "Missed call from " + event.callerName()
+                )
+        );
     }
 
 
@@ -117,15 +120,17 @@ public class NotificationEventListener {
         for (Long memberId : memberIds) {
             if (memberId.equals(actorId)) continue;
 
-            notificationService.createAndSend(NotificationEvent.builder()
-                    .recipientId(memberId)
-                    .actorId(actorId)
-                    .actorName(actorName)
-                    .type(type)
-                    .referenceId(referenceId)
-                    .chatId(chatId)
-                    .content(content)
-                    .build());
+            notificationService.createAndSend(
+                    new NotificationEvent(
+                            memberId,
+                            actorId,
+                            actorName,
+                            type,
+                            referenceId,
+                            chatId,
+                            content
+                    )
+            );
         }
     }
 

@@ -7,7 +7,6 @@ import com.telegram.auth.dto.response.AuthResponse;
 import com.telegram.auth.security.CustomUserDetails;
 import com.telegram.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,7 +18,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-@Tag(name = "Authentication", description = "Register, login, logout, change password")
+
 public class AuthController {
 
     private final AuthService authService;

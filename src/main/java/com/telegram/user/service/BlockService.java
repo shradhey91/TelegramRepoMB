@@ -10,6 +10,7 @@ import com.telegram.user.repository.UserRepo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -29,11 +30,9 @@ public class BlockService {
             throw new IllegalArgumentException("You cannot block yourself");
         }
 
-        User blocker = userRepo.findById(blockerId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User blocker = userRepo.findById(blockerId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        User blocked = userRepo.findById(blockedId)
-                .orElseThrow(() -> new ResourceNotFoundException("User to block not found"));
+        User blocked = userRepo.findById(blockedId).orElseThrow(() -> new ResourceNotFoundException("User to block not found"));
 
         if (blockedUserRepo.existsByBlockerIdAndBlockedId(blockerId, blockedId)) {
             throw new ConflictException("User is already blocked");
@@ -57,12 +56,21 @@ public class BlockService {
 
     @Transactional(readOnly = true)
     public List<UserProfileResponse> getBlockedUsers(Long userId) {
+
         List<Long> blockedIds = blockedUserRepo.findBlockedUserIds(userId);
 
-        return userRepo.findAllById(blockedIds).stream()
-                .map(this::toProfile)
-                .toList();
+        List<User> blockedUsers = userRepo.findAllById(blockedIds);
+
+        List<UserProfileResponse> response = new ArrayList<>();
+
+        for (User user : blockedUsers) {
+            UserProfileResponse profile = toProfile(user);
+            response.add(profile);
+        }
+
+        return response;
     }
+
 
     @Transactional(readOnly = true)
     public boolean isBlocked(Long userId1, Long userId2) {
