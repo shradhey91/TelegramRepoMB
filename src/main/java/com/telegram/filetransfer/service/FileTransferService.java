@@ -2,6 +2,7 @@ package com.telegram.filetransfer.service;
 
 import com.telegram.auth.entity.User;
 import com.telegram.chat.entity.Chat;
+import com.telegram.chat.service.ChatService;
 import com.telegram.common.enums.FileTransferStatus;
 import com.telegram.common.enums.MessageType;
 import com.telegram.common.exception.AccessDeniedException;
@@ -13,7 +14,10 @@ import com.telegram.filetransfer.dto.request.InitiateFileTransferRequest;
 import com.telegram.filetransfer.dto.response.FileTransferResponse;
 import com.telegram.filetransfer.entity.FileTransfer;
 import com.telegram.filetransfer.repository.FileTransferRepo;
+import com.telegram.message.dto.response.MessageResponse;
+import com.telegram.message.entity.Attachment;
 import com.telegram.message.entity.Message;
+import com.telegram.message.repository.AttachmentRepo;
 import com.telegram.message.repository.MessageRepo;
 import com.telegram.user.repository.UserRepo;
 import com.telegram.websocket.dto.WebSocketEvent;
@@ -34,24 +38,31 @@ public class FileTransferService {
     private final UserRepo userRepo;
     private final MessageRepo messageRepo;
     private final SimpMessagingTemplate messagingTemplate;
+    private final AttachmentRepo attachmentRepo;
+    private final ChatService chatService;
 
     public FileTransferService(FileTransferRepo fileTransferRepo,
                                ChatRepo chatRepo,
                                ChatMemberRepo chatMemberRepo,
                                UserRepo userRepo,
                                MessageRepo messageRepo,
-                               SimpMessagingTemplate messagingTemplate) {
+                               SimpMessagingTemplate messagingTemplate,
+                               AttachmentRepo attachmentRepo,
+                               ChatService chatService) {
         this.fileTransferRepo = fileTransferRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.userRepo = userRepo;
         this.messageRepo = messageRepo;
         this.messagingTemplate = messagingTemplate;
+        this.attachmentRepo = attachmentRepo;
+        this.chatService = chatService;
     }
 
 
     @Transactional
     public FileTransferResponse initiateTransfer(Long senderId, InitiateFileTransferRequest request) {
+
         if (senderId.equals(request.receiverId())) {
             throw new IllegalArgumentException("Cannot send a file to yourself");
         }
@@ -68,23 +79,30 @@ public class FileTransferService {
         if (!chatMemberRepo.existsByChatIdAndUserId(chat.getId(), senderId)) {
             throw new AccessDeniedException("You are not a member of this chat");
         }
-        if (!chatMemberRepo.existsByChatIdAndUserId(chat.getId(), request.receiverId())) {
+
+        if (!chatMemberRepo.existsByChatIdAndUserId(chat.getId(), receiver.getId())) {
             throw new AccessDeniedException("Receiver is not a member of this chat");
         }
 
         List<FileTransferStatus> activeStatuses = List.of(
                 FileTransferStatus.PENDING,
                 FileTransferStatus.ACCEPTED,
-                FileTransferStatus.TRANSFERRING);
+                FileTransferStatus.TRANSFERRING
+        );
 
-        List<FileTransfer> activeTransfers = fileTransferRepo
-                .findActiveTransfersForUser(senderId, activeStatuses);
+        List<FileTransfer> activeTransfers = fileTransferRepo.findActiveTransfersForUser(senderId, activeStatuses);
 
-        boolean alreadyTransferring = activeTransfers.stream()
-                .anyMatch(ft -> ft.getReceiver().getId().equals(request.receiverId()));
+        boolean alreadyTransferring = activeTransfers.stream().anyMatch(ft ->
+                (ft.getSender().getId().equals(senderId) &&
+                        ft.getReceiver().getId().equals(receiver.getId()))
+                        ||
+                        (ft.getSender().getId().equals(receiver.getId()) &&
+                                ft.getReceiver().getId().equals(senderId))
+        );
 
         if (alreadyTransferring) {
-            throw new ConflictException("You already have an active file transfer with this user");
+            throw new ConflictException(
+                    "A file transfer is already in progress with this user");
         }
 
         FileTransfer transfer = FileTransfer.builder()
@@ -98,18 +116,18 @@ public class FileTransferService {
                 .status(FileTransferStatus.PENDING)
                 .build();
 
-        fileTransferRepo.save(transfer);
+        transfer = fileTransferRepo.save(transfer);
 
         FileTransferResponse response = toResponse(transfer);
 
         messagingTemplate.convertAndSendToUser(
                 receiver.getEmail(),
                 "/queue/file-transfers",
-                WebSocketEvent.of("FILE_TRANSFER_OFFER", response));
+                WebSocketEvent.of("FILE_TRANSFER_OFFER", response)
+        );
 
         return response;
     }
-
 
     @Transactional
     public FileTransferResponse acceptTransfer(Long userId, Long transferId) {
@@ -206,7 +224,12 @@ public class FileTransferService {
 
     @Transactional
     public FileTransferResponse completeTransfer(Long userId, Long transferId) {
+
         FileTransfer transfer = getTransferOrThrow(transferId);
+
+        if (transfer.getStatus() == FileTransferStatus.COMPLETED) {
+            return toResponse(transfer);
+        }
 
         if (!transfer.getSender().getId().equals(userId) &&
                 !transfer.getReceiver().getId().equals(userId)) {
@@ -222,11 +245,23 @@ public class FileTransferService {
                 .chat(transfer.getChat())
                 .sender(transfer.getSender())
                 .type(MessageType.FILE)
-                .content(buildFileTransferMessage(transfer))
-                .isEdited(false)
+                .content(transfer.getFileName())
                 .isDeleted(false)
+                .isEdited(false)
                 .build();
-        messageRepo.save(message);
+
+        message = messageRepo.save(message);
+
+        Attachment attachment = Attachment.builder()
+                .message(message)
+                .fileName(transfer.getFileName())
+                .fileSize(transfer.getFileSize())
+                .mimeType(transfer.getMimeType())
+                .fileUrl(null)
+                .build();
+
+        attachmentRepo.save(attachment);
+        message.getAttachments().add(attachment);
 
         FileTransferResponse response = toResponse(transfer);
 
@@ -240,9 +275,13 @@ public class FileTransferService {
                 "/queue/file-transfers",
                 WebSocketEvent.of("FILE_TRANSFER_COMPLETED", response));
 
+        MessageResponse messageResponse =
+                chatService.toMessageResponse(message);
+
         messagingTemplate.convertAndSend(
                 "/topic/chat/" + transfer.getChat().getId(),
-                WebSocketEvent.of("NEW_MESSAGE", response));
+                WebSocketEvent.of("NEW_MESSAGE", messageResponse)
+        );
 
         return response;
     }
@@ -274,18 +313,6 @@ public class FileTransferService {
     private FileTransfer getTransferOrThrow(Long id) {
         return fileTransferRepo.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File transfer not found"));
-    }
-
-    private String buildFileTransferMessage(FileTransfer ft) {
-        String size = formatFileSize(ft.getFileSize());
-        return String.format("[P2P File] %s (%s)", ft.getFileName(), size);
-    }
-
-    private String formatFileSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     private FileTransferResponse toResponse(FileTransfer ft) {

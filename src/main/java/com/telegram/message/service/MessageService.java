@@ -3,10 +3,17 @@ package com.telegram.message.service;
 import com.telegram.chat.service.ChatService;
 import com.telegram.common.enums.ChatType;
 import com.telegram.common.enums.MemberRole;
+import com.telegram.filetransfer.dto.response.FileTransferResponse;
+import com.telegram.filetransfer.service.FileTransferService;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
+import com.telegram.message.entity.Attachment;
+import com.telegram.message.repository.AttachmentRepo;
 import com.telegram.notification.listener.ChatNotificationEvent;
+import com.telegram.storage.dto.StorageFolder;
+import com.telegram.storage.dto.StorageServiceProvider;
+import com.telegram.storage.dto.UploadResult;
 import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.chat.entity.Chat;
@@ -28,6 +35,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.telegram.filetransfer.dto.request.InitiateFileTransferRequest;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -45,22 +54,28 @@ public class MessageService {
     private final ChatService chatService;
     private final ApplicationEventPublisher eventPublisher;
     private final BlockService blockService;
+    private final StorageServiceProvider storageServiceProvider;
+    private final FileTransferService fileTransferService;
+    private final AttachmentRepo attachmentRepo;
 
     public MessageService(MessageRepo messageRepo, ChatRepo chatRepo,
                           ChatMemberRepo chatMemberRepo, UserRepo userRepo,
                           SimpMessagingTemplate messagingTemplate,
                           ChatService chatService,
                           ApplicationEventPublisher eventPublisher,
-                          BlockService blockService) {
+                          BlockService blockService, StorageServiceProvider storageServiceProvider,
+                          FileTransferService fileTransferService, AttachmentRepo attachmentRepo) {
         this.messageRepo = messageRepo;
         this.chatRepo = chatRepo;
         this.chatMemberRepo = chatMemberRepo;
         this.userRepo = userRepo;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
-        //this.fileStorageService = fileStorageService;
         this.eventPublisher = eventPublisher;
         this.blockService = blockService;
+        this.fileTransferService = fileTransferService;
+        this.storageServiceProvider = storageServiceProvider;
+        this.attachmentRepo = attachmentRepo;
     }
 
     @Transactional
@@ -272,9 +287,131 @@ public class MessageService {
         messagingTemplate.convertAndSend("/topic/chat/" + chatId, event);
     }
 
+    @Transactional
+    public Object sendFile(Long senderId, Long chatId, MultipartFile file) {
+
+        Chat chat = chatRepo.findById(chatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat not found"));
+
+        if (!chatMemberRepo.existsByChatIdAndUserId(chatId, senderId)) {
+            throw new AccessDeniedException("You are not a member of this chat");
+        }
+
+        if (shouldUseCloud(chat, file)) {
+            return uploadToCloud(senderId, chat, file);
+        }
+
+        return startP2PTransfer(senderId, chat, file);
+    }
+
+    @Transactional
+    private MessageResponse uploadToCloud(Long senderId, Chat chat, MultipartFile file) {
+
+        User sender = userRepo.findById(senderId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found"));
+
+        UploadResult uploadResult = storageServiceProvider.upload(file, StorageFolder.CHATS, senderId);
+
+        Message message = Message.builder()
+                .chat(chat)
+                .sender(sender)
+                .type(MessageType.FILE)
+                .content(file.getOriginalFilename())
+                .isEdited(false)
+                .isDeleted(false)
+                .build();
+
+        message = messageRepo.save(message);
+
+        Attachment attachment = Attachment.builder()
+                .message(message)
+                .fileUrl(uploadResult.url())
+                .fileName(uploadResult.fileName())
+                .fileSize(uploadResult.size())
+                .mimeType(uploadResult.contentType())
+                .build();
+
+        attachmentRepo.save(attachment);
+
+        message.getAttachments().add(attachment);
+
+        chat.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        chatRepo.save(chat);
+
+        MessageResponse response = chatService.toMessageResponse(message);
+
+        broadcastToChat(
+                chat.getId(),
+                WebSocketEvent.of("NEW_MESSAGE", response)
+        );
+
+        String senderName = sender.getDisplayName() != null
+                ? sender.getDisplayName()
+                : sender.getUsername();
+
+        eventPublisher.publishEvent(
+                new ChatNotificationEvent.NewMessage(
+                        chat.getId(),
+                        senderId,
+                        senderName,
+                        message.getId(),
+                        file.getOriginalFilename()
+                )
+        );
+
+        return response;
+    }
+
+    @Transactional
+    private FileTransferResponse startP2PTransfer(Long senderId, Chat chat, MultipartFile file) {
+
+        Long receiverId = chat.getMembers()
+                .stream()
+                .map(ChatMember::getUser)
+                .map(User::getId)
+                .filter(id -> !id.equals(senderId))
+                .findFirst()
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Receiver not found"));
+
+        InitiateFileTransferRequest request =
+                new InitiateFileTransferRequest(
+                        chat.getId(),
+                        receiverId,
+                        file.getOriginalFilename(),
+                        file.getSize(),
+                        file.getContentType(),
+                        null
+                );
+
+        return fileTransferService.initiateTransfer(senderId, request);
+    }
+
     private String extractStoredName(String fileUrl) {
         if (fileUrl == null) return null;
         int lastSlash = fileUrl.lastIndexOf('/');
         return lastSlash >= 0 ? fileUrl.substring(lastSlash + 1) : fileUrl;
+    }
+
+    private static final long P2P_THRESHOLD = 25L * 1024 * 1024;
+    private boolean shouldUseCloud(Chat chat, MultipartFile file) {
+
+        if (chat.getType() == ChatType.GROUP) {
+            return true;
+        }
+
+        String contentType = file.getContentType();
+
+        if (contentType != null) {
+            if (contentType.startsWith("image/"))
+                return true;
+            if (contentType.startsWith("video/") && file.getSize() <= P2P_THRESHOLD)
+                return true;
+            if (contentType.equals("application/pdf"))
+                return true;
+        }
+
+        return file.getSize() <= P2P_THRESHOLD;
     }
 }

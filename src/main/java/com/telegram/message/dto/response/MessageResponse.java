@@ -3,6 +3,7 @@ package com.telegram.message.dto.response;
 import com.telegram.common.enums.MessageType;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 public record MessageResponse(
         Long id,
@@ -16,5 +17,7 @@ public record MessageResponse(
         String replyToContent,
         Boolean isEdited,
         OffsetDateTime createdAt,
-        OffsetDateTime editedAt
+        OffsetDateTime editedAt,
+
+        List<AttachmentResponse> attachments
 ) {}

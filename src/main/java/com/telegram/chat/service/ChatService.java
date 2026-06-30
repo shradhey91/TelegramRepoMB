@@ -4,6 +4,7 @@ import com.telegram.chat.dto.request.CreateChatRequest;
 import com.telegram.chat.dto.response.ChatMemberResponse;
 import com.telegram.chat.dto.response.ChatResponse;
 import com.telegram.chat.dto.response.PinnedMessageResponse;
+import com.telegram.message.dto.response.AttachmentResponse;
 import com.telegram.message.dto.response.MessageResponse;
 import com.telegram.chat.entity.Chat;
 import com.telegram.chat.entity.ChatMember;
@@ -481,14 +482,28 @@ public class ChatService {
     }
 
     public MessageResponse toMessageResponse(Message msg) {
+
         String replyContent = null;
         Long replyToId = null;
+
         if (msg.getReplyTo() != null) {
             replyToId = msg.getReplyTo().getId();
             replyContent = msg.getReplyTo().getIsDeleted()
                     ? null
                     : msg.getReplyTo().getContent();
         }
+
+        List<AttachmentResponse> attachments = msg.getAttachments()
+                .stream()
+                .map(attachment -> new AttachmentResponse(
+                        attachment.getId(),
+                        attachment.getFileUrl(),
+                        attachment.getFileName(),
+                        attachment.getFileSize(),
+                        attachment.getMimeType(),
+                        attachment.getThumbnailUrl()
+                ))
+                .toList();
 
         return new MessageResponse(
                 msg.getId(),
@@ -504,7 +519,9 @@ public class ChatService {
                 replyContent,
                 msg.getIsEdited(),
                 msg.getCreatedAt(),
-                msg.getEditedAt());
+                msg.getEditedAt(),
+                attachments
+        );
     }
 
     private void broadcastToChat(Long chatId, WebSocketEvent<?> event) {

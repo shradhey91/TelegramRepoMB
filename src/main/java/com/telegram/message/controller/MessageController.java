@@ -1,23 +1,23 @@
 package com.telegram.message.controller;
 
+import com.telegram.auth.security.CustomUserDetails;
 import com.telegram.message.dto.request.EditMessageRequest;
 import com.telegram.message.dto.request.SendMessageRequest;
 import com.telegram.message.dto.response.MessageResponse;
-import com.telegram.auth.security.CustomUserDetails;
 import com.telegram.message.service.MessageService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/messages")
-
 @RequiredArgsConstructor
 public class MessageController {
 
@@ -29,7 +29,24 @@ public class MessageController {
             @RequestBody SendMessageRequest request,
             Authentication authentication) {
         Long userId = extractUserId(authentication);
-        return ResponseEntity.ok(messageService.sendMessage(userId, request));
+
+        return ResponseEntity.ok(
+                messageService.sendMessage(userId, request)
+        );
+    }
+
+    @PostMapping(value = "/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Send a file")
+    public ResponseEntity<?> sendFile(
+            @RequestParam Long chatId,
+            @RequestPart MultipartFile file,
+            Authentication authentication) {
+
+        Long userId = extractUserId(authentication);
+
+        return ResponseEntity.ok(
+                messageService.sendFile(userId, chatId, file)
+        );
     }
 
     @PutMapping
@@ -37,8 +54,12 @@ public class MessageController {
     public ResponseEntity<MessageResponse> editMessage(
             @RequestBody EditMessageRequest request,
             Authentication authentication) {
+
         Long userId = extractUserId(authentication);
-        return ResponseEntity.ok(messageService.editMessage(userId, request));
+
+        return ResponseEntity.ok(
+                messageService.editMessage(userId, request)
+        );
     }
 
     @DeleteMapping("/{messageId}")
@@ -46,30 +67,38 @@ public class MessageController {
     public ResponseEntity<Map<String, String>> deleteMessage(
             @PathVariable Long messageId,
             Authentication authentication) {
+
         Long userId = extractUserId(authentication);
+
         messageService.deleteMessage(userId, messageId);
-        return ResponseEntity.ok(Map.of("message", "Message deleted successfully"));
+
+        return ResponseEntity.ok(
+                Map.of("message", "Message deleted successfully")
+        );
     }
 
     @GetMapping("/chat/{chatId}")
-    @Operation(summary = "Get paginated messages for a chat (for initial load / reconnection)")
+    @Operation(summary = "Get paginated messages")
     public ResponseEntity<List<MessageResponse>> getChatMessages(
             @PathVariable Long chatId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
             Authentication authentication) {
         Long userId = extractUserId(authentication);
+
         return ResponseEntity.ok(messageService.getChatMessages(chatId, userId, page, size));
     }
 
     @PostMapping("/chat/{chatId}/read/{messageId}")
-    @Operation(summary = "Mark messages as read up to a given message")
+    @Operation(summary = "Mark messages as read")
     public ResponseEntity<Map<String, String>> markAsRead(
             @PathVariable Long chatId,
             @PathVariable Long messageId,
             Authentication authentication) {
+
         Long userId = extractUserId(authentication);
         messageService.markAsRead(chatId, messageId, userId);
+
         return ResponseEntity.ok(Map.of("message", "Marked as read"));
     }
 
