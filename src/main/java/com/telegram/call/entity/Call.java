@@ -12,12 +12,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 @Entity
-@Table(name = "calls", indexes = {
-        @Index(name = "idx_calls_caller", columnList = "caller_id"),
-        @Index(name = "idx_calls_receiver", columnList = "receiver_id"),
-        @Index(name = "idx_calls_status", columnList = "status"),
-        @Index(name = "idx_calls_created", columnList = "createdAt DESC")
-})
+@Table(name = "calls")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -30,12 +25,12 @@ public class Call {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "caller_id", nullable = false)
-    private User caller;
+    @JoinColumn(name = "creator_id", nullable = false)
+    private User creator;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", nullable = false)
-    private User receiver;
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "receiver_id", nullable = false)
+//    private User receiver;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
