@@ -326,7 +326,7 @@ public class MessageService {
 
         Attachment attachment = Attachment.builder()
                 .message(message)
-                .fileUrl(uploadResult.url())
+                .fileUrl(uploadResult.fileName())
                 .fileName(uploadResult.fileName())
                 .fileSize(uploadResult.size())
                 .mimeType(uploadResult.contentType())

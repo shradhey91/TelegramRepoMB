@@ -497,7 +497,7 @@ public class ChatService {
                 .stream()
                 .map(attachment -> new AttachmentResponse(
                         attachment.getId(),
-                        attachment.getFileUrl(),
+                        "/api/attachments/" + attachment.getId(),
                         attachment.getFileName(),
                         attachment.getFileSize(),
                         attachment.getMimeType(),
