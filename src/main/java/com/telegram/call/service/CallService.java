@@ -2,11 +2,16 @@ package com.telegram.call.service;
 
 import com.telegram.call.dto.request.InitiateCallRequest;
 import com.telegram.call.dto.response.CallResponse;
+
+import com.telegram.call.dto.response.ParticipantResponse;
+import com.telegram.common.enums.ParticipantRole;
+import com.telegram.common.enums.ParticipantStatus;
 import com.telegram.notification.listener.ChatNotificationEvent;
 import com.telegram.user.service.BlockService;
 import com.telegram.websocket.dto.WebSocketEvent;
 import com.telegram.call.entity.Call;
 import com.telegram.call.entity.CallParticipant;
+
 import com.telegram.auth.entity.User;
 import com.telegram.common.enums.CallStatus;
 import com.telegram.common.enums.CallType;
@@ -22,7 +27,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -42,7 +46,8 @@ public class CallService {
                        CallParticipantRepo participantRepo,
                        UserRepo userRepo,
                        SimpMessagingTemplate messagingTemplate,
-                       ApplicationEventPublisher eventPublisher,BlockService blockService) {
+                       ApplicationEventPublisher eventPublisher,
+                       BlockService blockService) {
         this.callRepo = callRepo;
         this.participantRepo = participantRepo;
         this.userRepo = userRepo;
@@ -51,131 +56,133 @@ public class CallService {
         this.blockService = blockService;
     }
 
+    private static final List<CallStatus> BUSY_STATUSES =
+            List.of(CallStatus.RINGING, CallStatus.ACTIVE);
+
+
     @Transactional
-    public CallResponse initiateCall(Long callerId, InitiateCallRequest request) {
+    public CallResponse initiateCall(Long creatorId, InitiateCallRequest request) {
 
-        if (callerId.equals(request.receiverId())) {
-            throw new IllegalArgumentException("You cannot call yourself");
+        if (request.participantIds() == null || request.participantIds().isEmpty()) {
+            throw new IllegalArgumentException("At least one participant is required");
+        }
+        if (request.participantIds().contains(creatorId)) {
+            throw new IllegalArgumentException("You cannot invite yourself");
         }
 
-        if (blockService.isBlocked(callerId, request.receiverId())) {
-            throw new AccessDeniedException("Cannot call this user — there is a block between you");
-        }
+        User creator = userRepo.findById(creatorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Creator not found"));
 
-        User caller = userRepo.findById(callerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Caller not found"));
-
-        User receiver = userRepo.findById(request.receiverId())
-                .orElseThrow(() -> new ResourceNotFoundException("Receiver not found"));
-
-        List<CallStatus> busyStatuses = List.of(CallStatus.RINGING, CallStatus.ACTIVE);
-
-        if (!callRepo.findActiveCallsForUser(callerId, busyStatuses).isEmpty()) {
+        if (!callRepo.findActiveCallsForUser(creatorId, BUSY_STATUSES).isEmpty()) {
             throw new ConflictException("You are already in a call");
         }
 
-        if (!callRepo.findActiveCallsForUser(request.receiverId(), busyStatuses).isEmpty()) {
-            throw new ConflictException("The receiver is currently busy");
-        }
-
         Call call = Call.builder()
-                .caller(caller)
-                .receiver(receiver)
-                .callType(request.callType() != null ? request.callType() : CallType.VOICE)
+                .creator(creator)
+                .callType(request.callType() != null ? request.callType() : CallType.VIDEO)
                 .status(CallStatus.RINGING)
                 .build();
-
         callRepo.save(call);
 
-        CallParticipant callerParticipant = CallParticipant.builder()
+        participantRepo.save(CallParticipant.builder()
                 .call(call)
-                .user(caller)
-                .cameraEnabled(request.callType() == CallType.VIDEO)
-                .build();
-        participantRepo.save(callerParticipant);
+                .user(creator)
+                .role(ParticipantRole.CREATOR)
+                .status(ParticipantStatus.JOINED)
+                .cameraEnabled(call.getCallType() == CallType.VIDEO)
+                .joinedAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .build());
 
-        CallResponse response = toCallResponse(call);
+        String creatorName = creator.getDisplayName() != null
+                ? creator.getDisplayName() : creator.getUsername();
 
-        messagingTemplate.convertAndSendToUser(
-                receiver.getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("INCOMING_CALL", response));
+        for (Long inviteeId : request.participantIds()) {
+            if (blockService.isBlocked(creatorId, inviteeId)) {
+                continue;
+            }
 
-        String callerName = caller.getDisplayName() != null
-                ? caller.getDisplayName() : caller.getUsername();
-        eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
-                call.getId(), callerId, callerName, request.receiverId()));
+            User invitee = userRepo.findById(inviteeId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found: " + inviteeId));
 
-        return response;
+            boolean busy = !callRepo.findActiveCallsForUser(inviteeId, BUSY_STATUSES).isEmpty();
+
+            participantRepo.save(CallParticipant.builder()
+                    .call(call)
+                    .user(invitee)
+                    .role(ParticipantRole.MEMBER)
+                    .status(busy ? ParticipantStatus.REJECTED : ParticipantStatus.RINGING)
+                    .cameraEnabled(false)
+                    .build());
+
+            if (busy) {
+                continue;
+            }
+
+            messagingTemplate.convertAndSendToUser(
+                    invitee.getEmail(),
+                    "/queue/calls",
+                    WebSocketEvent.of("INCOMING_CALL", toCallResponse(call)));
+
+            eventPublisher.publishEvent(new ChatNotificationEvent.IncomingCall(
+                    call.getId(), creatorId, creatorName, inviteeId));
+        }
+
+        return toCallResponse(call);
     }
 
     @Transactional
     public CallResponse acceptCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
+        CallParticipant p = getParticipantOrThrow(callId, userId);
 
-        if (!call.getReceiver().getId().equals(userId)) {
-            throw new AccessDeniedException("Only the receiver can accept this call");
+        if (p.getStatus() != ParticipantStatus.RINGING) {
+            throw new IllegalStateException("You are not in RINGING state, current: " + p.getStatus());
+        }
+        if (call.getStatus() == CallStatus.ENDED) {
+            throw new IllegalStateException("Call has already ended");
         }
 
-        if (call.getStatus() != CallStatus.RINGING) {
-            throw new IllegalStateException("Call is not in RINGING state, current: " + call.getStatus());
+        p.setStatus(ParticipantStatus.JOINED);
+        p.setJoinedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        p.setCameraEnabled(call.getCallType() == CallType.VIDEO);
+        participantRepo.save(p);
+
+        if (call.getStatus() == CallStatus.RINGING) {
+            call.setStatus(CallStatus.ACTIVE);
+            call.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
+            callRepo.save(call);
         }
 
-        call.setStatus(CallStatus.ACTIVE);
-        call.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        callRepo.save(call);
-
-        CallParticipant receiverParticipant = CallParticipant.builder()
-                .call(call)
-                .user(call.getReceiver())
-                .cameraEnabled(call.getCallType() == CallType.VIDEO)
-                .build();
-        participantRepo.save(receiverParticipant);
-
-        CallResponse response = toCallResponse(call);
-
-        messagingTemplate.convertAndSendToUser(
-                call.getCaller().getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("CALL_ACCEPTED", response));
-
-        return response;
+        broadcastToJoined(call, "PARTICIPANT_JOINED", toCallResponse(call), userId);
+        return toCallResponse(call);
     }
 
     @Transactional
     public CallResponse rejectCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
+        CallParticipant p = getParticipantOrThrow(callId, userId);
 
-        if (!call.getReceiver().getId().equals(userId)) {
-            throw new AccessDeniedException("Only the receiver can reject this call");
+        if (p.getStatus() != ParticipantStatus.RINGING) {
+            throw new IllegalStateException("You are not in RINGING state");
         }
 
-        if (call.getStatus() != CallStatus.RINGING) {
-            throw new IllegalStateException("Call is not in RINGING state");
-        }
+        p.setStatus(ParticipantStatus.REJECTED);
+        p.setLeftAt(OffsetDateTime.now(ZoneOffset.UTC));
+        participantRepo.save(p);
 
-        call.setStatus(CallStatus.REJECTED);
-        call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        callRepo.save(call);
+        broadcastToJoined(call, "PARTICIPANT_REJECTED", toCallResponse(call), userId);
 
-        CallResponse response = toCallResponse(call);
-
-        messagingTemplate.convertAndSendToUser(
-                call.getCaller().getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("CALL_REJECTED", response));
-
-        return response;
+        endCallIfNobodyLeft(call);
+        return toCallResponse(call);
     }
 
     @Transactional
     public CallResponse cancelCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
 
-        if (!call.getCaller().getId().equals(userId)) {
-            throw new AccessDeniedException("Only the caller can cancel this call");
+        if (!call.getCreator().getId().equals(userId)) {
+            throw new AccessDeniedException("Only the creator can cancel this call");
         }
-
         if (call.getStatus() != CallStatus.RINGING) {
             throw new IllegalStateException("Call is not in RINGING state");
         }
@@ -184,78 +191,78 @@ public class CallService {
         call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        participantRepo.findByCallId(callId).forEach(p -> {
+            if (p.getStatus() == ParticipantStatus.RINGING
+                    || p.getStatus() == ParticipantStatus.JOINED) {
+                p.setStatus(ParticipantStatus.LEFT);
+                p.setLeftAt(now);
+                participantRepo.save(p);
+            }
+        });
+
         CallResponse response = toCallResponse(call);
-
-        messagingTemplate.convertAndSendToUser(
-                call.getReceiver().getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("CALL_CANCELLED", response));
-
+        broadcastToAllRinging(call, "CALL_CANCELLED", response, userId);
         return response;
     }
 
     @Transactional
     public CallResponse endCall(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
+        CallParticipant p = getParticipantOrThrow(callId, userId);
 
-        if (!call.getCaller().getId().equals(userId) &&
-                !call.getReceiver().getId().equals(userId)) {
-            throw new AccessDeniedException("You are not a participant in this call");
+        if (p.getStatus() == ParticipantStatus.LEFT
+                || p.getStatus() == ParticipantStatus.REJECTED) {
+            throw new IllegalStateException("You already left this call");
         }
 
-        if (call.getStatus() != CallStatus.ACTIVE) {
-            throw new IllegalStateException("Call is not active");
-        }
+        p.setStatus(ParticipantStatus.LEFT);
+        p.setLeftAt(OffsetDateTime.now(ZoneOffset.UTC));
+        participantRepo.save(p);
 
-        call.endCall();
-        callRepo.save(call);
+        broadcastToJoined(call, "PARTICIPANT_LEFT", toCallResponse(call), userId);
 
-        participantRepo.findByCallIdAndLeftAtIsNull(callId)
-                .forEach(p -> {
-                    p.setLeftAt(OffsetDateTime.now(ZoneOffset.UTC));
-                    participantRepo.save(p);
-                });
-
-        CallResponse response = toCallResponse(call);
-
-        User otherUser = call.getCaller().getId().equals(userId)
-                ? call.getReceiver() : call.getCaller();
-
-        messagingTemplate.convertAndSendToUser(
-                otherUser.getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("CALL_ENDED", response));
-
-        return response;
+        endCallIfNobodyLeft(call);
+        return toCallResponse(call);
     }
 
     @Transactional
     public void markAsMissed(Long callId) {
         Call call = getCallOrThrow(callId);
 
-        if (call.getStatus() != CallStatus.RINGING) return;
+        if (call.getStatus() != CallStatus.RINGING) {
+            return;
+        }
 
         call.setStatus(CallStatus.MISSED);
         call.setEndedAt(OffsetDateTime.now(ZoneOffset.UTC));
         callRepo.save(call);
 
-        CallResponse response = toCallResponse(call);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        String creatorName = call.getCreator().getDisplayName() != null
+                ? call.getCreator().getDisplayName() : call.getCreator().getUsername();
+
+        participantRepo.findByCallId(callId).forEach(p -> {
+            if (p.getStatus() == ParticipantStatus.RINGING) {
+                p.setStatus(ParticipantStatus.LEFT);
+                p.setLeftAt(now);
+                participantRepo.save(p);
+
+                messagingTemplate.convertAndSendToUser(
+                        p.getUser().getEmail(),
+                        "/queue/calls",
+                        WebSocketEvent.of("CALL_MISSED", toCallResponse(call)));
+
+                eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(
+                        call.getId(), call.getCreator().getId(), creatorName,
+                        p.getUser().getId()));
+            }
+        });
 
         messagingTemplate.convertAndSendToUser(
-                call.getCaller().getEmail(),
+                call.getCreator().getEmail(),
                 "/queue/calls",
-                WebSocketEvent.of("CALL_MISSED", response));
-
-        messagingTemplate.convertAndSendToUser(
-                call.getReceiver().getEmail(),
-                "/queue/calls",
-                WebSocketEvent.of("CALL_MISSED", response));
-
-        String callerName = call.getCaller().getDisplayName() != null
-                ? call.getCaller().getDisplayName() : call.getCaller().getUsername();
-        eventPublisher.publishEvent(new ChatNotificationEvent.MissedCall(
-                call.getId(), call.getCaller().getId(), callerName,
-                call.getReceiver().getId()));
+                WebSocketEvent.of("CALL_MISSED", toCallResponse(call)));
     }
 
     @Transactional(readOnly = true)
@@ -270,12 +277,50 @@ public class CallService {
     public CallResponse getCallById(Long userId, Long callId) {
         Call call = getCallOrThrow(callId);
 
-        if (!call.getCaller().getId().equals(userId) &&
-                !call.getReceiver().getId().equals(userId)) {
-            throw new AccessDeniedException("You are not a participant in this call");
-        }
-
+        participantRepo.findByCallIdAndUserId(callId, userId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a participant in this call"));
         return toCallResponse(call);
+    }
+
+    private void endCallIfNobodyLeft(Call call) {
+        long joined = participantRepo.countByCallIdAndStatus(call.getId(), ParticipantStatus.JOINED);
+
+        if (joined == 0
+                && call.getStatus() != CallStatus.ENDED
+                && call.getStatus() != CallStatus.CANCELLED
+                && call.getStatus() != CallStatus.MISSED) {
+
+            call.endCall();
+            callRepo.save(call);
+            broadcastToAll(call, "CALL_ENDED", toCallResponse(call), null);
+        }
+    }
+
+    private void broadcastToJoined(Call call, String event, Object payload, Long excludeUserId) {
+        participantRepo.findByCallIdAndStatus(call.getId(), ParticipantStatus.JOINED)
+                .stream()
+                .filter(p -> excludeUserId == null || !p.getUser().getId().equals(excludeUserId))
+                .forEach(p -> messagingTemplate.convertAndSendToUser(
+                        p.getUser().getEmail(), "/queue/calls",
+                        WebSocketEvent.of(event, payload)));
+    }
+
+    private void broadcastToAllRinging(Call call, String event, Object payload, Long excludeUserId) {
+        participantRepo.findByCallIdAndStatus(call.getId(), ParticipantStatus.RINGING)
+                .stream()
+                .filter(p -> excludeUserId == null || !p.getUser().getId().equals(excludeUserId))
+                .forEach(p -> messagingTemplate.convertAndSendToUser(
+                        p.getUser().getEmail(), "/queue/calls",
+                        WebSocketEvent.of(event, payload)));
+    }
+
+    private void broadcastToAll(Call call, String event, Object payload, Long excludeUserId) {
+        participantRepo.findByCallId(call.getId())
+                .stream()
+                .filter(p -> excludeUserId == null || !p.getUser().getId().equals(excludeUserId))
+                .forEach(p -> messagingTemplate.convertAndSendToUser(
+                        p.getUser().getEmail(), "/queue/calls",
+                        WebSocketEvent.of(event, payload)));
     }
 
     private Call getCallOrThrow(Long callId) {
@@ -283,23 +328,43 @@ public class CallService {
                 .orElseThrow(() -> new ResourceNotFoundException("Call not found"));
     }
 
+    private CallParticipant getParticipantOrThrow(Long callId, Long userId) {
+        return participantRepo.findByCallIdAndUserId(callId, userId)
+                .orElseThrow(() -> new AccessDeniedException("You are not a participant in this call"));
+    }
+
     private CallResponse toCallResponse(Call call) {
-        User caller = call.getCaller();
-        User receiver = call.getReceiver();
+        User creator = call.getCreator();
+
+        List<ParticipantResponse> participants =
+                participantRepo.findByCallId(call.getId()).stream()
+                        .map(this::toParticipantResponse)
+                        .toList();
 
         return new CallResponse(
                 call.getId(),
-                caller.getId(),
-                caller.getDisplayName() != null ? caller.getDisplayName() : caller.getUsername(),
-                caller.getAvatarUrl(),
-                receiver.getId(),
-                receiver.getDisplayName() != null ? receiver.getDisplayName() : receiver.getUsername(),
-                receiver.getAvatarUrl(),
+                creator.getId(),
+                creator.getDisplayName() != null ? creator.getDisplayName() : creator.getUsername(),
+                creator.getAvatarUrl(),
                 call.getCallType(),
                 call.getStatus(),
                 call.getCreatedAt(),
                 call.getStartedAt(),
                 call.getEndedAt(),
-                call.getDurationSeconds());
+                call.getDurationSeconds(),
+                participants);
+    }
+
+    private ParticipantResponse toParticipantResponse(CallParticipant p) {
+        User u = p.getUser();
+        return new ParticipantResponse(
+                u.getId(),
+                u.getDisplayName() != null ? u.getDisplayName() : u.getUsername(),
+                u.getAvatarUrl(),
+                p.getRole(),
+                p.getStatus(),
+                p.getMuted(),
+                p.getCameraEnabled(),
+                p.getScreenSharing());
     }
 }

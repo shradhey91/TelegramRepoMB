@@ -23,7 +23,7 @@ public class CallController {
         this.callService = callService;
     }
 
-    @PostMapping("/initiate")
+    @PostMapping("/group")
     @Operation(summary = "Start a voice or video call")
     public ResponseEntity<CallResponse> initiateCall(
             @RequestBody InitiateCallRequest request,

@@ -1,6 +1,8 @@
 package com.telegram.call.entity;
 
 import com.telegram.auth.entity.User;
+import com.telegram.common.enums.ParticipantRole;
+import com.telegram.common.enums.ParticipantStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -23,6 +25,13 @@ public class CallParticipant {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+
+    @Enumerated(EnumType.STRING)
+    private ParticipantRole role;
+
+    @Enumerated(EnumType.STRING)
+    private ParticipantStatus status;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "call_id", nullable = false)

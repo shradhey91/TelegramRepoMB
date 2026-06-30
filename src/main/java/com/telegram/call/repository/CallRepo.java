@@ -15,34 +15,23 @@ import java.util.List;
 public interface CallRepo extends JpaRepository<Call, Long> {
 
     @Query("""
-            SELECT c FROM Call c
-            WHERE (c.caller.id = :userId OR c.receiver.id = :userId)
+            SELECT DISTINCT c FROM Call c
+            JOIN CallParticipant p ON p.call = c
+            WHERE p.user.id = :userId
               AND c.status IN :activeStatuses
             """)
     List<Call> findActiveCallsForUser(
             @Param("userId") Long userId,
             @Param("activeStatuses") List<CallStatus> activeStatuses);
 
-
     @Query("""
-            SELECT c FROM Call c
-            WHERE c.caller.id = :userId OR c.receiver.id = :userId
+            SELECT DISTINCT c FROM Call c
+            JOIN CallParticipant p ON p.call = c
+            WHERE p.user.id = :userId
             ORDER BY c.createdAt DESC
             """)
     Page<Call> findCallHistoryByUserId(
             @Param("userId") Long userId,
-            Pageable pageable);
-
-
-    @Query("""
-            SELECT c FROM Call c
-            WHERE (c.caller.id = :userId1 AND c.receiver.id = :userId2)
-               OR (c.caller.id = :userId2 AND c.receiver.id = :userId1)
-            ORDER BY c.createdAt DESC
-            """)
-    Page<Call> findCallHistoryBetweenUsers(
-            @Param("userId1") Long userId1,
-            @Param("userId2") Long userId2,
             Pageable pageable);
 
     @Query("""
